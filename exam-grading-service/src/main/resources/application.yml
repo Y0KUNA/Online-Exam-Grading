@@ -1,0 +1,9 @@
+server.port: ${SERVER_PORT:8083}
+spring:
+  application.name: exam-grading-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/exam_grading_db}
+    username: ${DB_USER:exam_grading}
+    password: ${DB_PASSWORD:change-me}
+  jpa.hibernate.ddl-auto: validate
+  flyway.enabled: true

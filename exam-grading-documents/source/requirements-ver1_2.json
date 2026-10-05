@@ -1,0 +1,1156 @@
+{
+  "project_summary": {
+    "title": "Hệ thống số hóa và quản lý chấm bài thi tự luận trực tuyến",
+    "description": "Hệ thống Web số hóa quy trình chấm bài thi tự luận viết tay từ PDF scan, từ tiếp nhận, cắt phách điện tử, phân công, chấm độc lập/chấm chéo, xử lý ngoại lệ đến ghép phách và xuất kết quả. Giám khảo chấm thủ công trên bản scan ẩn danh; hệ thống không dùng AI/OCR để quyết định điểm hay phân tích nội dung bài làm.",
+    "domain": "Khảo thí và chấm thi giáo dục"
+  },
+  "actors": [
+    {
+      "name": "Phòng khảo thí",
+      "type": "human",
+      "role_description": "Quản trị kỳ thi, danh tính, tiếp nhận bài, phân công, giám sát, xử lý ngoại lệ, ghép phách và xuất kết quả.",
+      "permissions": [
+        "Quản lý kỳ thi/rubric/roster",
+        "Upload và gán thí sinh",
+        "Xem bản gốc và bản ẩn danh",
+        "Phân công hàng loạt",
+        "Phân công từng bài đối với REVIEW_REQUIRED",
+        "Xử lý lỗi kỹ thuật/quy trình REVIEW_REQUIRED",
+        "Ghép phách",
+        "Xuất kết quả"
+      ]
+    },
+    {
+      "name": "Giám khảo",
+      "type": "human",
+      "role_description": "Chấm thủ công submission được phân công trên bản scan ẩn danh.",
+      "permissions": [
+        "Xem bài được phân công",
+        "Xem bản ẩn danh và rubric",
+        "Nhập điểm/ghi chú",
+        "Xác nhận lượt chấm",
+        "Đánh dấu vấn đề cần xem xét",
+        "Không xem danh tính/bản gốc",
+        "Không xem điểm người khác trước khi hoàn thành"
+      ]
+    },
+    {
+      "name": "Hội đồng chấm thi",
+      "type": "human",
+      "role_description": "Giải quyết bất đồng chuyên môn và quyết định điểm cuối khi cần.",
+      "permissions": [
+        "Xem REVIEW_REQUIRED trừ danh tính",
+        "Xem điểm/ghi chú giám khảo",
+        "Nhập điểm cuối kèm lý do khi bất đồng chuyên môn"
+      ]
+    },
+    {
+      "name": "API Gateway",
+      "type": "system",
+      "role_description": "Điểm vào duy nhất, xác thực JWT và chuyển định danh.",
+      "permissions": [
+        "Xác thực JWT",
+        "Forward userId/role"
+      ]
+    },
+    {
+      "name": "Identity/Pseudonym Service",
+      "type": "system",
+      "role_description": "Quản lý roster, phách và ánh xạ danh tính.",
+      "permissions": [
+        "Quản lý danh tính",
+        "Sinh số phách",
+        "Ghép phách qua API phân quyền"
+      ]
+    },
+    {
+      "name": "Submission Service",
+      "type": "system",
+      "role_description": "Tiếp nhận PDF, trạng thái và cắt phách.",
+      "permissions": [
+        "Quản lý submission",
+        "Che phách bất đồng bộ",
+        "Phát SSE"
+      ]
+    },
+    {
+      "name": "Exam & Grading Service",
+      "type": "system",
+      "role_description": "Quản lý kỳ thi, rubric, phân công và chấm.",
+      "permissions": [
+        "Quản lý cấu hình thi",
+        "Quản lý phân công/lượt chấm"
+      ]
+    },
+    {
+      "name": "Result/Review Service",
+      "type": "system",
+      "role_description": "Chấm chéo, review, điểm cuối, retention và xuất kết quả.",
+      "permissions": [
+        "So sánh điểm",
+        "Quản lý review/quyết định",
+        "Tổng hợp/xuất kết quả"
+      ]
+    },
+    {
+      "name": "RabbitMQ",
+      "type": "external_service",
+      "role_description": "Hàng đợi job che phách.",
+      "permissions": [
+        "Nhận/phân phối job"
+      ]
+    },
+    {
+      "name": "Object Storage",
+      "type": "external_service",
+      "role_description": "Lưu PDF gốc và ẩn danh.",
+      "permissions": [
+        "Lưu/cung cấp file theo quyền"
+      ]
+    }
+  ],
+  "functional_requirements": [
+    {
+      "id": "FR-001",
+      "title": "Quản lý kỳ thi",
+      "description": "Tạo/cập nhật kỳ thi, cấu trúc đề, thang điểm, chấm chéo và mẫu giấy.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Lưu cấu hình kỳ thi",
+        "Tham chiếu mẫu giấy"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Cấu hình điểm",
+      "description": "Cấu hình điểm câu và tiêu chí.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Tổng điểm phải khớp thang điểm"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Quản lý rubric",
+      "description": "Nhập thủ công rubric và quản lý DRAFT/ACTIVE.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Phải xác nhận trước ACTIVE"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Import rubric DOCX",
+      "description": "Trích xuất bảng DOCX 1-1 thành JSON và tùy chọn gợi ý điểm bằng regex.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Chỉ hỗ trợ DOCX",
+        "Giữ hàng/cột/rowspan/colspan",
+        "Gợi ý không tự kích hoạt",
+        "Bảng bất thường có thể nhập tay"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Quản lý roster",
+      "description": "Nhập hoặc import roster CSV/XLSX.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Bắt buộc số báo danh và họ tên",
+        "Không trùng số báo danh trong kỳ thi"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Upload và gán bài",
+      "description": "Upload một PDF/submission và xác nhận thí sinh từ roster.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Một submission một PDF",
+        "Upload không chờ cắt phách"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Kiểm tra PDF",
+      "description": "Kiểm tra PDF, tối đa 50MB, 1-20 trang và dung sai kích thước trang ±5% so với template.",
+      "actor": "Submission Service",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "PDF hỏng/không đọc được do lỗi file chuyển FAILED",
+        "PDF vượt giới hạn bị từ chối hoặc xử lý theo validation"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Sinh phách và ẩn danh",
+      "description": "Sinh phách CSPRNG, lưu ánh xạ riêng, che vùng phách cố định và ghi phách lên bản sao.",
+      "actor": "Identity/Pseudonym Service",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Phách duy nhất trong kỳ thi",
+        "Bản gốc giữ nguyên",
+        "Giám khảo chỉ thấy bản ẩn danh"
+      ]
+    },
+    {
+      "id": "FR-009",
+      "title": "Trạng thái realtime",
+      "description": "Cập nhật submission qua SSE và REST snapshot.",
+      "actor": "Submission Service",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Không polling định kỳ",
+        "Có snapshot phục hồi"
+      ]
+    },
+    {
+      "id": "FR-010",
+      "title": "Retry xử lý lỗi",
+      "description": "Retry lỗi kỹ thuật tạm thời với backoff; hết retry chuyển FAILED.",
+      "actor": "Submission Service",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Ghi nhận lỗi",
+        "Không chạy lại bước đã thành công khi không cần"
+      ]
+    },
+    {
+      "id": "FR-011",
+      "title": "Kiểm tra cắt phách",
+      "description": "Đối chiếu bản gốc/bản ẩn danh/phách và xử lý thất bại.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Không khớp template hoặc cắt phách thất bại khi PDF vẫn đọc được chuyển REVIEW_REQUIRED",
+        "Không xóa bản gốc do lỗi xử lý"
+      ]
+    },
+    {
+      "id": "FR-012",
+      "title": "Phân công chấm",
+      "description": "Phân công hàng loạt cho luồng chấm thông thường; phân công từng bài chỉ dành cho bài REVIEW_REQUIRED.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Hỗ trợ phân công hàng loạt",
+        "Chỉ cho phép phân công đơn lẻ với REVIEW_REQUIRED",
+        "Không chia submission theo câu"
+      ]
+    },
+    {
+      "id": "FR-013",
+      "title": "Giao diện chấm",
+      "description": "Hiển thị PDF ẩn danh và rubric side-by-side, xem trang/zoom.",
+      "actor": "Giám khảo",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Không lộ danh tính",
+        "Giám khảo tự tìm câu trên scan"
+      ]
+    },
+    {
+      "id": "FR-014",
+      "title": "Nhập và xác nhận điểm",
+      "description": "Nhập điểm/ghi chú từng câu và xác nhận lượt chấm.",
+      "actor": "Giám khảo",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Không vượt điểm tối đa",
+        "Không thiếu câu bắt buộc"
+      ]
+    },
+    {
+      "id": "FR-015",
+      "title": "Chấm chéo độc lập",
+      "description": "Nhiều giám khảo chấm độc lập.",
+      "actor": "Giám khảo",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Ẩn điểm/ghi chú người khác trước khi hoàn thành"
+      ]
+    },
+    {
+      "id": "FR-016",
+      "title": "So sánh chấm chéo",
+      "description": "So sánh từng cặp; mọi cặp trong ngưỡng thì lấy trung bình tất cả và làm tròn half-up 2 chữ số.",
+      "actor": "Result/Review Service",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Bất kỳ cặp vượt ngưỡng chuyển REVIEW_REQUIRED",
+        "Làm tròn half-up 2 chữ số"
+      ]
+    },
+    {
+      "id": "FR-017",
+      "title": "Xử lý REVIEW_REQUIRED",
+      "description": "Xử lý đúng các trường hợp: cắt phách thất bại khi file vẫn đọc được/không khớp template, chênh lệch điểm, ghi chú vấn đề, phúc khảo.",
+      "actor": "Phòng khảo thí/Hội đồng chấm thi",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Giám khảo đánh dấu vấn đề thì chuyển ngay REVIEW_REQUIRED",
+        "Có thể tiếp tục, chấm lại hoặc quyết định theo quyền"
+      ]
+    },
+    {
+      "id": "FR-018",
+      "title": "Quyết định Hội đồng",
+      "description": "Hội đồng nhập điểm cuối kèm lý do cho bất đồng chuyên môn.",
+      "actor": "Hội đồng chấm thi",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "decision_source=COUNCIL",
+        "Lý do bắt buộc"
+      ]
+    },
+    {
+      "id": "FR-019",
+      "title": "Ghép phách",
+      "description": "Ghép kết quả với danh tính sau chấm.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Chỉ người có quyền ghép phách"
+      ]
+    },
+    {
+      "id": "FR-020",
+      "title": "Finalized kết quả",
+      "description": "Chốt khi đủ điều kiện; nếu không chấm chéo, điểm cuối lấy từ lượt chấm duy nhất sau xác nhận.",
+      "actor": "Result/Review Service",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Không còn review mở",
+        "Không chấm chéo thì dùng lượt chấm duy nhất",
+        "Phòng khảo thí chốt/tổng hợp trước FINALIZED"
+      ]
+    },
+    {
+      "id": "FR-021",
+      "title": "Xuất kết quả",
+      "description": "Xuất Excel/CSV sau ghép phách.",
+      "actor": "Phòng khảo thí",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Có thí sinh, phách, điểm từng câu từng GK, điểm cuối, trạng thái, ghi chú",
+        "Dùng nhãn GK1/GK2"
+      ]
+    },
+    {
+      "id": "FR-022",
+      "title": "Vòng đời submission",
+      "description": "Quản lý UPLOADING, UPLOADED, VALIDATING, ANONYMIZING, READY_FOR_GRADING, GRADING, REVIEW_REQUIRED, COMPLETED, FINALIZED, FAILED.",
+      "actor": "Submission Service",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "FAILED cho file hỏng/không đọc được do lỗi file hoặc lỗi kỹ thuật hệ thống sau retry",
+        "REVIEW_REQUIRED theo các trường hợp nghiệp vụ đã quy định"
+      ]
+    },
+    {
+      "id": "FR-023",
+      "title": "Authorization theo resource",
+      "description": "Mỗi service kiểm tra quyền tài nguyên.",
+      "actor": "Các service nghiệp vụ",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Giám khảo chỉ truy cập bài được giao"
+      ]
+    },
+    {
+      "id": "FR-024",
+      "title": "Phúc khảo/chấm lại",
+      "description": "Tạo lượt chấm lại mới; giám khảo chấm lại không thấy điểm cũ trước khi hoàn thành; điểm cuối được xác nhận trong quy trình review.",
+      "actor": "Phòng khảo thí/Hội đồng chấm thi",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Giữ lịch sử lượt cũ trong thời hạn lưu trữ",
+        "Lượt mới độc lập",
+        "Điểm cuối được xác nhận bởi vai trò có quyền"
+      ]
+    },
+    {
+      "id": "FR-025",
+      "title": "Tự động xóa dữ liệu chi tiết sau một năm",
+      "description": "Tính một năm từ thời điểm từng submission chuyển FINALIZED; khi hết hạn tự xóa điểm từng câu, metadata, file scan, số phách và dữ liệu bài thi chi tiết khác; giữ lâu dài thông tin thí sinh, kỳ thi/môn thi và điểm cuối cùng.",
+      "actor": "Hệ thống",
+      "priority": "must_have",
+      "acceptance_criteria": [
+        "Mỗi submission có thời hạn retention tính từ thời điểm FINALIZED của chính submission đó",
+        "Sau đúng một năm, dữ liệu chi tiết thuộc retention bị xóa",
+        "Số phách bị xóa cùng dữ liệu chi tiết",
+        "Thông tin thí sinh, kỳ thi/môn thi và điểm cuối cùng không bị xóa bởi chính sách retention này"
+      ]
+    }
+  ],
+  "business_rules": [
+    {
+      "id": "BR-001",
+      "description": "Tổng điểm cấu hình khớp thang điểm.",
+      "applies_to": "FR-002",
+      "condition_logic": "sum(max_score)=exam_scale"
+    },
+    {
+      "id": "BR-002",
+      "description": "Rubric phải xác nhận trước ACTIVE.",
+      "applies_to": "FR-003,FR-004",
+      "condition_logic": "Chỉ EXAM_OFFICE xác nhận sau kiểm tra."
+    },
+    {
+      "id": "BR-003",
+      "description": "Import rubric chỉ DOCX.",
+      "applies_to": "FR-004",
+      "condition_logic": "PDF rubric nhập tay."
+    },
+    {
+      "id": "BR-004",
+      "description": "Một submission là một PDF của một thí sinh.",
+      "applies_to": "FR-006",
+      "condition_logic": "Gán roster phải được xác nhận."
+    },
+    {
+      "id": "BR-005",
+      "description": "Phách CSPRNG duy nhất trong kỳ thi.",
+      "applies_to": "FR-008",
+      "condition_logic": "Uniqueness scope=kỳ thi."
+    },
+    {
+      "id": "BR-006",
+      "description": "Ánh xạ danh tính/phách chỉ thuộc Identity.",
+      "applies_to": "FR-008,FR-019",
+      "condition_logic": "Không service khác truy vấn Identity DB trực tiếp."
+    },
+    {
+      "id": "BR-007",
+      "description": "Giám khảo không xem danh tính/bản gốc.",
+      "applies_to": "FR-013",
+      "condition_logic": "GRADER chỉ dùng bản ẩn danh."
+    },
+    {
+      "id": "BR-008",
+      "description": "Điểm câu hợp lệ.",
+      "applies_to": "FR-014",
+      "condition_logic": "0<=score<=max_score và đủ câu bắt buộc."
+    },
+    {
+      "id": "BR-009",
+      "description": "Chấm chéo độc lập.",
+      "applies_to": "FR-015",
+      "condition_logic": "Ẩn kết quả người khác đến khi hoàn thành lượt."
+    },
+    {
+      "id": "BR-010",
+      "description": "Quy tắc chấm chéo.",
+      "applies_to": "FR-016",
+      "condition_logic": "Mọi |total_i-total_j|<=threshold => round_half_up(mean,2); nếu không => REVIEW_REQUIRED."
+    },
+    {
+      "id": "BR-011",
+      "description": "Quyết định Hội đồng có nguồn/lý do.",
+      "applies_to": "FR-018",
+      "condition_logic": "decision_source=COUNCIL và reason bắt buộc."
+    },
+    {
+      "id": "BR-012",
+      "description": "Điều kiện FINALIZED.",
+      "applies_to": "FR-020",
+      "condition_logic": "Đủ lượt chấm và không review mở; chấm chéo hợp lệ hoặc có quyết định Hội đồng."
+    },
+    {
+      "id": "BR-013",
+      "description": "Bản scan gốc không bị sửa bởi cắt phách.",
+      "applies_to": "FR-008",
+      "condition_logic": "Ẩn danh trên bản sao."
+    },
+    {
+      "id": "BR-014",
+      "description": "Vùng phách cố định trang đầu.",
+      "applies_to": "FR-008",
+      "condition_logic": "Dùng tọa độ tỉ lệ; không OCR/layout detection."
+    },
+    {
+      "id": "BR-015",
+      "description": "REVIEW_REQUIRED chỉ theo các trường hợp nghiệp vụ quy định.",
+      "applies_to": "FR-017,FR-022",
+      "condition_logic": "Cắt phách thất bại khi PDF vẫn đọc được/không khớp template; chênh lệch điểm vượt ngưỡng; giám khảo ghi chú vấn đề; phúc khảo/chấm lại."
+    },
+    {
+      "id": "BR-016",
+      "description": "FAILED phân biệt với REVIEW_REQUIRED.",
+      "applies_to": "FR-007,FR-010,FR-022",
+      "condition_logic": "PDF hỏng/không đọc được do lỗi file => FAILED; lỗi kỹ thuật hệ thống sau retry => FAILED; lỗi cắt phách khi file vẫn đọc được hoặc template không khớp => REVIEW_REQUIRED."
+    },
+    {
+      "id": "BR-017",
+      "description": "Không chấm chéo thì điểm cuối lấy từ lượt chấm duy nhất.",
+      "applies_to": "FR-020",
+      "condition_logic": "cross_grading=false và lượt chấm đã xác nhận => final_score=grader_total, sau đó Phòng khảo thí chốt/tổng hợp."
+    },
+    {
+      "id": "BR-018",
+      "description": "Giám khảo báo vấn đề làm chuyển review ngay.",
+      "applies_to": "FR-017",
+      "condition_logic": "Khi grader đánh dấu vấn đề cần xem xét => REVIEW_REQUIRED."
+    },
+    {
+      "id": "BR-019",
+      "description": "Phân công thông thường theo lô; phân công đơn lẻ chỉ cho review.",
+      "applies_to": "FR-012",
+      "condition_logic": "single_assignment chỉ hợp lệ nếu submission=REVIEW_REQUIRED."
+    },
+    {
+      "id": "BR-020",
+      "description": "Roster không trùng SBD trong kỳ thi.",
+      "applies_to": "FR-005",
+      "condition_logic": "Unique(exam_id,candidate_number)."
+    },
+    {
+      "id": "BR-021",
+      "description": "Hội đồng quyết định điểm khi bất đồng chuyên môn.",
+      "applies_to": "FR-017,FR-018",
+      "condition_logic": "Phòng khảo thí xử lý kỹ thuật/quy trình; không tự sửa điểm do bất đồng chuyên môn."
+    },
+    {
+      "id": "BR-022",
+      "description": "Retention dữ liệu chi tiết là một năm tính từ FINALIZED của từng submission; dữ liệu kết quả cốt lõi được giữ lâu dài.",
+      "applies_to": "FR-025",
+      "condition_logic": "retention_deadline = submission.finalized_at + 1 năm; khi đến hạn xóa điểm từng câu, metadata, file scan, số phách và dữ liệu chi tiết khác; giữ thông tin thí sinh, kỳ thi/môn thi và điểm cuối cùng."
+    }
+  ],
+  "data_entities": [
+    {
+      "name": "Kỳ thi",
+      "description": "Đợt thi và cấu hình chấm; thông tin kỳ thi/môn thi cần được giữ lâu dài để gắn với kết quả cuối.",
+      "attributes": [
+        {
+          "name": "tên",
+          "type": "string",
+          "description": "Tên kỳ thi",
+          "required": true
+        },
+        {
+          "name": "môn thi",
+          "type": "string",
+          "description": "Môn thi, thuộc dữ liệu kết quả giữ lâu dài",
+          "required": true
+        },
+        {
+          "name": "thang điểm",
+          "type": "number",
+          "description": "Thang điểm",
+          "required": true
+        },
+        {
+          "name": "chấm chéo",
+          "type": "object",
+          "description": "Bật/tắt, số GK, ngưỡng",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Submission",
+          "type": "one_to_many",
+          "description": "Có nhiều bài"
+        },
+        {
+          "related_entity": "Câu hỏi",
+          "type": "one_to_many",
+          "description": "Có nhiều câu"
+        }
+      ]
+    },
+    {
+      "name": "Thí sinh",
+      "description": "Danh tính trong Identity; thông tin thí sinh gắn với kết quả cuối được giữ lâu dài.",
+      "attributes": [
+        {
+          "name": "họ tên",
+          "type": "string",
+          "description": "Họ tên",
+          "required": true
+        },
+        {
+          "name": "số báo danh",
+          "type": "string",
+          "description": "Duy nhất trong kỳ thi",
+          "required": true
+        },
+        {
+          "name": "lớp",
+          "type": "string",
+          "description": "Lớp",
+          "required": false
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Submission",
+          "type": "one_to_many",
+          "description": "Gán bài thi"
+        }
+      ]
+    },
+    {
+      "name": "Mẫu giấy thi",
+      "description": "Cấu hình trang/vùng phách.",
+      "attributes": [
+        {
+          "name": "tọa độ vùng phách",
+          "type": "object",
+          "description": "x,y,width,height theo tỉ lệ",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Kỳ thi",
+          "type": "many_to_many",
+          "description": "Được tham chiếu"
+        }
+      ]
+    },
+    {
+      "name": "Câu hỏi",
+      "description": "Câu cần chấm.",
+      "attributes": [
+        {
+          "name": "nội dung",
+          "type": "string",
+          "description": "Nội dung",
+          "required": true
+        },
+        {
+          "name": "điểm tối đa",
+          "type": "number",
+          "description": "Điểm tối đa",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Kỳ thi",
+          "type": "many_to_one",
+          "description": "Thuộc kỳ thi"
+        }
+      ]
+    },
+    {
+      "name": "Rubric",
+      "description": "Đáp án/hướng dẫn chấm.",
+      "attributes": [
+        {
+          "name": "trạng thái",
+          "type": "enum",
+          "description": "DRAFT/ACTIVE",
+          "required": true
+        },
+        {
+          "name": "nội dung",
+          "type": "object",
+          "description": "Nhập tay hoặc JSON bảng DOCX",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Kỳ thi",
+          "type": "many_to_one",
+          "description": "Thuộc kỳ thi"
+        }
+      ]
+    },
+    {
+      "name": "Submission",
+      "description": "Bài thi của một thí sinh.",
+      "attributes": [
+        {
+          "name": "trạng thái",
+          "type": "enum",
+          "description": "Vòng đời xử lý",
+          "required": true
+        },
+        {
+          "name": "số trang",
+          "type": "integer",
+          "description": "1-20 trang",
+          "required": true
+        },
+        {
+          "name": "finalized_at",
+          "type": "datetime",
+          "description": "Thời điểm chuyển FINALIZED, dùng làm mốc tính retention một năm",
+          "required": false
+        },
+        {
+          "name": "metadata",
+          "type": "object",
+          "description": "Metadata bài thi, bị xóa khi hết retention",
+          "required": false
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Thí sinh",
+          "type": "many_to_one",
+          "description": "Ánh xạ trong Identity"
+        },
+        {
+          "related_entity": "Lượt chấm",
+          "type": "one_to_many",
+          "description": "Các lượt chấm"
+        },
+        {
+          "related_entity": "Tệp bài thi",
+          "type": "one_to_many",
+          "description": "Bản gốc/ẩn danh"
+        }
+      ]
+    },
+    {
+      "name": "Số phách",
+      "description": "Mã giả danh; bị xóa khi hết một năm kể từ submission FINALIZED.",
+      "attributes": [
+        {
+          "name": "giá trị",
+          "type": "string",
+          "description": "CSPRNG",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Submission",
+          "type": "one_to_one",
+          "description": "Phách hiện hành"
+        }
+      ]
+    },
+    {
+      "name": "Tệp bài thi",
+      "description": "PDF gốc hoặc ẩn danh, bị xóa khi hết retention.",
+      "attributes": [
+        {
+          "name": "loại",
+          "type": "enum",
+          "description": "ORIGINAL/ANONYMIZED",
+          "required": true
+        },
+        {
+          "name": "vị trí",
+          "type": "string",
+          "description": "Object storage",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Submission",
+          "type": "many_to_one",
+          "description": "Thuộc submission"
+        }
+      ]
+    },
+    {
+      "name": "Phân công chấm",
+      "description": "Giao submission cho giám khảo.",
+      "attributes": [
+        {
+          "name": "giám khảo",
+          "type": "string",
+          "description": "Định danh GK",
+          "required": true
+        },
+        {
+          "name": "kiểu phân công",
+          "type": "enum",
+          "description": "BULK hoặc SINGLE_REVIEW",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Submission",
+          "type": "many_to_one",
+          "description": "Bài được giao"
+        }
+      ]
+    },
+    {
+      "name": "Lượt chấm",
+      "description": "Lượt chấm độc lập hoặc chấm lại.",
+      "attributes": [
+        {
+          "name": "hoàn thành",
+          "type": "boolean",
+          "description": "Đã xác nhận",
+          "required": true
+        },
+        {
+          "name": "tổng điểm",
+          "type": "number",
+          "description": "Tổng điểm",
+          "required": false
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Điểm câu",
+          "type": "one_to_many",
+          "description": "Chi tiết điểm"
+        },
+        {
+          "related_entity": "Submission",
+          "type": "many_to_one",
+          "description": "Thuộc bài"
+        }
+      ]
+    },
+    {
+      "name": "Điểm câu",
+      "description": "Chi tiết điểm, bị xóa khi hết retention.",
+      "attributes": [
+        {
+          "name": "điểm",
+          "type": "number",
+          "description": "Điểm câu",
+          "required": true
+        },
+        {
+          "name": "ghi chú",
+          "type": "string",
+          "description": "Ghi chú",
+          "required": false
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Lượt chấm",
+          "type": "many_to_one",
+          "description": "Thuộc lượt"
+        }
+      ]
+    },
+    {
+      "name": "Review",
+      "description": "Hồ sơ REVIEW_REQUIRED.",
+      "attributes": [
+        {
+          "name": "lý do",
+          "type": "string",
+          "description": "Nguyên nhân",
+          "required": true
+        },
+        {
+          "name": "trạng thái",
+          "type": "string",
+          "description": "Tình trạng xử lý",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Submission",
+          "type": "many_to_one",
+          "description": "Bài cần review"
+        }
+      ]
+    },
+    {
+      "name": "Kết quả cuối cùng",
+      "description": "Dữ liệu kết quả chính thức được giữ lâu dài sau khi dữ liệu chi tiết hết retention.",
+      "attributes": [
+        {
+          "name": "thông tin thí sinh",
+          "type": "object",
+          "description": "Thông tin thí sinh cần giữ lâu dài với kết quả",
+          "required": true
+        },
+        {
+          "name": "thông tin kỳ thi/môn thi",
+          "type": "object",
+          "description": "Ngữ cảnh kỳ thi và môn thi cần giữ lâu dài",
+          "required": true
+        },
+        {
+          "name": "điểm cuối",
+          "type": "number",
+          "description": "Điểm cuối cùng",
+          "required": true
+        },
+        {
+          "name": "nguồn quyết định",
+          "type": "string",
+          "description": "Nguồn điểm cuối",
+          "required": true
+        }
+      ],
+      "relationships": [
+        {
+          "related_entity": "Submission",
+          "type": "one_to_one",
+          "description": "Nguồn phát sinh kết quả trước khi dữ liệu chi tiết bị xóa"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Tiếp nhận và cắt phách",
+      "trigger": "Upload PDF đã gán thí sinh",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Submission Service",
+          "action": "Validate giới hạn và khả năng đọc PDF",
+          "condition": null
+        },
+        {
+          "step": 2,
+          "actor": "Submission Service",
+          "action": "Chuyển FAILED",
+          "condition": "PDF hỏng/không đọc được do lỗi file"
+        },
+        {
+          "step": 3,
+          "actor": "Identity/Pseudonym Service",
+          "action": "Sinh phách và lưu ánh xạ",
+          "condition": "PDF đọc được"
+        },
+        {
+          "step": 4,
+          "actor": "Submission Service",
+          "action": "Che phách trên bản sao",
+          "condition": null
+        },
+        {
+          "step": 5,
+          "actor": "Submission Service",
+          "action": "Chuyển REVIEW_REQUIRED",
+          "condition": "Không khớp template hoặc cắt phách thất bại nhưng PDF vẫn đọc được"
+        },
+        {
+          "step": 6,
+          "actor": "Submission Service",
+          "action": "Retry rồi FAILED",
+          "condition": "Lỗi kỹ thuật hệ thống; hết retry"
+        }
+      ],
+      "expected_outcome": "READY_FOR_GRADING, REVIEW_REQUIRED hoặc FAILED theo nguyên nhân rõ ràng."
+    },
+    {
+      "name": "Phân công và chấm",
+      "trigger": "Có bài sẵn sàng",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Phòng khảo thí",
+          "action": "Phân công hàng loạt",
+          "condition": "Luồng thông thường"
+        },
+        {
+          "step": 2,
+          "actor": "Phòng khảo thí",
+          "action": "Phân công từng bài",
+          "condition": "Chỉ REVIEW_REQUIRED"
+        },
+        {
+          "step": 3,
+          "actor": "Giám khảo",
+          "action": "Chấm và xác nhận",
+          "condition": null
+        },
+        {
+          "step": 4,
+          "actor": "Giám khảo",
+          "action": "Đánh dấu vấn đề",
+          "condition": "Có vấn đề cần xem xét"
+        },
+        {
+          "step": 5,
+          "actor": "Hệ thống",
+          "action": "Chuyển ngay REVIEW_REQUIRED",
+          "condition": "Giám khảo đánh dấu vấn đề"
+        }
+      ],
+      "expected_outcome": "Có lượt chấm hợp lệ hoặc bài được review."
+    },
+    {
+      "name": "Xác định điểm cuối",
+      "trigger": "Đủ lượt chấm",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Result/Review Service",
+          "action": "Dùng điểm lượt duy nhất",
+          "condition": "Không chấm chéo"
+        },
+        {
+          "step": 2,
+          "actor": "Result/Review Service",
+          "action": "So sánh từng cặp và tính trung bình half-up 2 số",
+          "condition": "Có chấm chéo và mọi cặp trong ngưỡng"
+        },
+        {
+          "step": 3,
+          "actor": "Result/Review Service",
+          "action": "Chuyển REVIEW_REQUIRED",
+          "condition": "Có cặp vượt ngưỡng"
+        },
+        {
+          "step": 4,
+          "actor": "Hội đồng chấm thi",
+          "action": "Quyết định điểm kèm lý do",
+          "condition": "Bất đồng chuyên môn"
+        }
+      ],
+      "expected_outcome": "Có điểm cuối hợp lệ hoặc review."
+    },
+    {
+      "name": "Phúc khảo/chấm lại",
+      "trigger": "Yêu cầu phúc khảo",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Hệ thống",
+          "action": "Chuyển REVIEW_REQUIRED",
+          "condition": null
+        },
+        {
+          "step": 2,
+          "actor": "Phòng khảo thí",
+          "action": "Phân công đơn lẻ lượt chấm lại",
+          "condition": null
+        },
+        {
+          "step": 3,
+          "actor": "Giám khảo",
+          "action": "Chấm lại mà không thấy điểm cũ trước khi hoàn thành",
+          "condition": null
+        },
+        {
+          "step": 4,
+          "actor": "Phòng khảo thí/Hội đồng chấm thi",
+          "action": "Xác nhận điểm cuối theo thẩm quyền",
+          "condition": null
+        }
+      ],
+      "expected_outcome": "Có lượt chấm lại độc lập và điểm cuối được xác nhận."
+    },
+    {
+      "name": "Retention dữ liệu",
+      "trigger": "Một submission đạt mốc một năm kể từ thời điểm FINALIZED",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Hệ thống",
+          "action": "Xác định submission hết retention từ finalized_at + 1 năm",
+          "condition": "Submission đã FINALIZED đủ một năm"
+        },
+        {
+          "step": 2,
+          "actor": "Hệ thống",
+          "action": "Xóa điểm từng câu, metadata, file scan, số phách và dữ liệu chi tiết thuộc chính sách",
+          "condition": null
+        },
+        {
+          "step": 3,
+          "actor": "Hệ thống",
+          "action": "Giữ lâu dài thông tin thí sinh, kỳ thi/môn thi và điểm cuối cùng",
+          "condition": null
+        }
+      ],
+      "expected_outcome": "Dữ liệu chi tiết của submission bị xóa đúng một năm sau FINALIZED; dữ liệu kết quả cốt lõi vẫn tồn tại."
+    }
+  ],
+  "non_functional_requirements": [
+    {
+      "category": "security",
+      "description": "Gateway xác thực JWT; service authorization theo resource; Identity DB tách biệt; giám khảo không xem danh tính/bản gốc."
+    },
+    {
+      "category": "availability",
+      "description": "Job cắt phách bất đồng bộ hỗ trợ retry/backoff."
+    },
+    {
+      "category": "scalability",
+      "description": "Xử lý đồng thời qua queue; SSE thay polling."
+    },
+    {
+      "category": "usability",
+      "description": "Side-by-side scan/rubric; REST snapshot khi mất SSE."
+    },
+    {
+      "category": "compliance",
+      "description": "Retention được tính riêng cho từng submission từ thời điểm FINALIZED; sau một năm tự động xóa dữ liệu chi tiết và số phách, đồng thời giữ lâu dài thông tin thí sinh, kỳ thi/môn thi và điểm cuối cùng."
+    },
+    {
+      "category": "other",
+      "description": "Bản scan gốc giữ nguyên cho đến khi hết thời hạn retention; MVP không AI/OCR."
+    }
+  ],
+  "integrations": [
+    {
+      "name": "RabbitMQ",
+      "purpose": "Queue job che phách",
+      "direction": "bidirectional"
+    },
+    {
+      "name": "Object Storage MinIO/S3-compatible",
+      "purpose": "Lưu PDF đến khi hết retention",
+      "direction": "bidirectional"
+    },
+    {
+      "name": "SSE",
+      "purpose": "Đẩy trạng thái",
+      "direction": "outbound"
+    },
+    {
+      "name": "DOCX parser",
+      "purpose": "Đọc bảng rubric DOCX",
+      "direction": "inbound"
+    }
+  ],
+  "constraints": [
+    {
+      "type": "technology",
+      "description": "Web MVP, 4 service nghiệp vụ + API Gateway; RabbitMQ, PostgreSQL database-per-service, S3-compatible storage, SSE."
+    },
+    {
+      "type": "infrastructure",
+      "description": "Docker Compose; không Kubernetes."
+    },
+    {
+      "type": "other",
+      "description": "PDF tối đa 50MB, 1-20 trang, dung sai kích thước trang ±5% so với template."
+    },
+    {
+      "type": "other",
+      "description": "Vùng phách cố định; không OCR/layout detection."
+    },
+    {
+      "type": "other",
+      "description": "Rubric import chỉ DOCX."
+    },
+    {
+      "type": "other",
+      "description": "Roster import CSV/XLSX."
+    },
+    {
+      "type": "time",
+      "description": "Retention dữ liệu chi tiết của từng submission là 1 năm kể từ thời điểm submission FINALIZED; thông tin thí sinh, kỳ thi/môn thi và điểm cuối cùng được giữ lâu dài."
+    }
+  ],
+  "assumptions": [
+    "Một submission có một số phách hiện hành; số phách và lịch sử chỉnh sửa phách thuộc dữ liệu chi tiết bị xóa khi hết retention.",
+    "Cơ chế cấp JWT/tài khoản nằm ngoài chi tiết đặc tả hiện tại.",
+    "CSV và Excel đều là định dạng xuất kết quả."
+  ],
+  "open_questions": []
+}

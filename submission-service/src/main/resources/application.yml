@@ -1,0 +1,10 @@
+server.port: ${SERVER_PORT:8082}
+spring:
+  application.name: submission-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/submission_db}
+    username: ${DB_USER:exam_grading}
+    password: ${DB_PASSWORD:change-me}
+  jpa.hibernate.ddl-auto: validate
+  flyway.enabled: true
+  rabbitmq.addresses: ${RABBITMQ_URL:amqp://localhost:5672}

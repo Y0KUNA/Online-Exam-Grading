@@ -1,0 +1,9 @@
+server.port: ${SERVER_PORT:8084}
+spring:
+  application.name: result-review-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5435/result_review_db}
+    username: ${DB_USER:exam_grading}
+    password: ${DB_PASSWORD:change-me}
+  jpa.hibernate.ddl-auto: validate
+  flyway.enabled: true

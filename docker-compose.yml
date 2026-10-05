@@ -1,0 +1,3 @@
+# Local shared infrastructure. Application containers are added after each service has its API implementation.
+include:
+  - path: deploy/docker-compose.yml

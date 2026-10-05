@@ -1,0 +1,45 @@
+# Hệ thống số hóa và quản lý chấm bài thi tự luận trực tuyến — 06. Non-functional Requirements
+> Phiên bản: FINAL (hợp nhất v1.0 + v1.1) | Ngày cập nhật: 2026-09-19 | Trạng thái: draft
+> Hợp nhất từ 06-nfr-ver1.0.md và 06-nfr-ver1_1.md. Thay đổi cốt lõi so với v1.0: các mục Security, Availability, Performance, Data integrity, Observability và Giới hạn chất lượng MVP được cập nhật theo luồng presigned POST direct-to-MinIO (ADR-013).
+
+## Security
+NFR-security và FR-023 được đáp ứng bằng defense-in-depth: Gateway kiểm JWT signature/exp và chỉ Gateway expose public (kể cả route pass-through `/storage/*` — vẫn là request tới Gateway, không phải domain/port riêng của MinIO); identity headers nội bộ ký HMAC kèm timestamp/requestId; business service kiểm role + ownership/resource; DB credential tách theo service; Identity DB không truy vấn chéo. GRADER không có endpoint/presigned URL ORIGINAL và grading payload không chứa candidate fields (FR-013, BR-006/007). MinIO buckets private, presigned GET mặc định 5 phút, presigned POST cho upload ORIGINAL mặc định 10 phút và chỉ hợp lệ cho đúng `object_key`/`content-length-range` đã ký — MinIO tự thực thi điều kiện này trước khi chấp nhận ghi object, giảm khả năng client thao túng kích thước/khóa object. Secrets đặt qua Docker secrets/env bên ngoài source; log không ghi JWT, PII, pseudonym mapping, presigned URL hay nội dung `fields` của presigned policy.
+
+Bảo vệ upload: giới hạn 50 MB được thực thi ở hai lớp — (1) Submission Service từ chối khai báo `fileSizeBytes` vượt hạn ngay lúc init; (2) MinIO tự chặn qua điều kiện `content-length-range` trong presigned POST policy, độc lập với Gateway/Submission Service. MIME/signature PDF thật sự (đọc bytes, không chỉ tin content-type khai báo) chỉ được xác nhận ở bước VALIDATING async, parse trong worker không đặc quyền, giới hạn 1–20 trang, vì backend không đọc bytes lúc nhận request init/complete. DOCX cũng có size limit vận hành (đề xuất 20 MB) và parser từ chối nested table bất thường. Đây là giả định kỹ thuật tác động thấp và cần cấu hình được.
+
+## Availability và fault tolerance
+Anonymization là async qua durable RabbitMQ queue/message, publisher confirm, consumer manual ack. Lỗi transient retry backoff 30s/2m/10m tối đa 3 retry; duplicate delivery xử lý idempotent; lỗi nghiệp vụ không retry mù (FR-010/022). REST inter-service có timeout ngắn (khoảng 3s metadata, dài hơn với export) và retry chỉ GET/idempotent commands; không retry POST không có idempotency key. Docker Compose MVP không cung cấp HA node-level; restart policy + durable DB/queue/object volumes bảo vệ khỏi process restart. Đây là mức availability tương xứng đồ án, không tuyên bố zero-downtime.
+
+Vì việc upload không còn là một request đồng bộ duy nhất (init → upload trực tiếp → complete là ba bước tách rời), hệ thống cần dung sai cho trường hợp client bỏ dở giữa chừng: `uploadExpiresAt` giới hạn thời gian presigned policy còn hiệu lực, một scheduler định kỳ (tần suất đề xuất mỗi 5-15 phút) quét `Submission.status=UPLOADING` quá hạn để chuyển `FAILED/UPLOAD_ABANDONED`, và một job riêng quét object trong bucket `original` không có `ExamFile` tương ứng sau một khoảng an toàn để xóa (orphan cleanup, idempotent, không phụ thuộc DB transaction xuyên service).
+
+## Performance và scalability
+Không có con số user/throughput bắt buộc trong requirements, nên thiết kế ưu tiên scale dọc và scale worker ngang thay vì sharding. PDF không lưu DB; streaming upload/download tránh giữ 50 MB toàn bộ trong heap. Submission worker concurrency cấu hình theo CPU/RAM; RabbitMQ tạo backpressure. DB index theo status/exam/grader/deadline như Data Model; list API phân trang cursor/limit (mặc định 50, max 200). SSE thay polling (FR-009), heartbeat ~15s và snapshot khi reconnect. Có thể chạy nhiều Submission worker container với cùng queue nếu tải tăng mà không đổi contract.
+
+Với luồng direct-to-storage, PDF bytes không còn đi qua Submission Service (chỉ đi qua Gateway ở tầng proxy thuần túy, `proxy_request_buffering off`), giảm đáng kể áp lực heap/CPU của Submission Service khi có nhiều upload đồng thời so với luồng multipart trực tiếp trước đây — đây là lợi ích hiệu năng chính của thay đổi này ở quy mô MVP. Gateway vẫn là điểm chịu toàn bộ băng thông upload (khác với phương án MinIO expose trực tiếp — xem ADR-013 phần đánh đổi), nên cấu hình connection pool/timeout cho route storage cần tách khỏi cấu hình route API JSON thông thường để tránh upload lớn ảnh hưởng độ trễ của các request khác.
+
+## Realtime usability
+Submission commit state trước khi emit SSE để snapshot luôn là source of truth. Event có sequence/id; client dùng `Last-Event-ID` khi có thể và luôn fallback GET snapshot nếu gap/restart. UI grading hiển thị PDF.js side-by-side rubric, zoom/page navigation và autosave draft điểm; confirm là hành động riêng có validation (FR-009, FR-013/014). Không tự suy luận vị trí câu trên scan.
+
+## Data integrity và auditability
+ORIGINAL ghi object một lần, lưu SHA-256 và không overwrite; anonymization tạo key khác (BR-013). PostgreSQL transaction bảo vệ confirm attempt, rubric activation và local state changes. Điểm dùng BigDecimal; cross-grade so sánh mọi cặp và `HALF_UP` scale 2 đúng FR-016. FinalResult là snapshot immutable về candidate/exam/final score; regrade trước lần FINALIZED mới phải tạo quyết định/version logic thay vì sửa score detail lịch sử âm thầm. Pseudonym uniqueness có DB constraint (BR-005).
+
+`ExamFile.sha256` được tính ở bước VALIDATING (worker tải object để kiểm PDF) thay vì lúc nhận file, nên trong khoảng thời gian ngắn giữa `complete` và khi VALIDATING hoàn tất, checksum chưa sẵn sàng — đây là trạng thái hợp lệ tạm thời, cần phản ánh đúng trong audit/monitoring, không coi là bất thường dữ liệu. `size_bytes` tại `ExamFile` được xác nhận qua HEAD object thật (không chỉ tin khai báo client) trước khi chuyển `UPLOADED`, giữ nguyên nguyên tắc "backend không tin dữ liệu client khai báo mà không xác minh".
+
+Các thay đổi có tác động nghiệp vụ như rubric activation, assignment, confirm grading, review resolution, Council decision, finalization và purge cần audit event metadata (`actorId`, action, resourceId, timestamp, requestId) trong service sở hữu. Audit có chứa dữ liệu chi tiết của submission phải tuân retention; audit kết quả cốt lõi không được vô tình giữ phách/điểm câu sau purge (FR-025).
+
+## Compliance và retention
+FR-025/BR-022: `retention_deadline = finalized_at + 1 năm` cho từng submission. Result/Review scheduler chạy hàng ngày và tìm deadline quá hạn; các purge command idempotent xóa QuestionScore/attempt detail, review detail, submission metadata, ORIGINAL/ANONYMIZED, pseudonym/mapping/history; chỉ khi bốn service có receipt DONE mới đánh dấu PURGED. Candidate, exam/subject context và FinalResult core được giữ lâu dài. Backup cũng phải có retention phù hợp; nếu backup chứa dữ liệu đã đến hạn mà chưa thể xóa chọn lọc, thời hạn backup phải ngắn và restore procedure phải chạy purge ngay sau phục hồi để tránh tái xuất hiện dữ liệu hết hạn.
+
+## Privacy
+Data minimization được áp dụng: queue job không chứa candidateId/name; Submission DB không lưu candidate; Exam/Grading không cần PII; Result chỉ nhận identity khi ghép/finalize/export. COUNCIL xem review nhưng không danh tính; EXAM_OFFICE là vai trò duy nhất được resolve identity và ORIGINAL theo nghiệp vụ. CSV/XLSX export là dữ liệu nhạy cảm; API chỉ EXAM_OFFICE và response đặt `Cache-Control: no-store`.
+
+## Observability
+Mỗi request/job có correlation/requestId; structured logs gồm service, operation, submissionId (không PII), duration, outcome/errorCode. Metrics tối thiểu: HTTP latency/error rate, RabbitMQ queue depth, anonymization duration/retry/failure, SSE connections, DB pool usage, review count, purge overdue count. Health endpoints tách liveness/readiness; readiness kiểm DB và dependency thiết yếu nhưng không làm liveness phụ thuộc service ngoài. Với Docker Compose dùng Prometheus/Grafana là tùy chọn vận hành, không bắt buộc chức năng MVP.
+
+Bổ sung metric cho luồng upload trực tiếp: số lượng submission bị `UPLOAD_ABANDONED`, số object bị orphan cleanup xóa mỗi lần chạy — giúp phát hiện vấn đề UX (client hay bỏ dở upload) hoặc tấn công (spam init upload không hoàn tất).
+
+## Khả năng phục hồi dữ liệu
+PostgreSQL volume và MinIO volume phải backup định kỳ trong môi trường có dữ liệu thật; restore test cần xác nhận mapping ownership và checksum ORIGINAL. RabbitMQ không phải nguồn dữ liệu duy nhất: ProcessingJob/Submission state trong PostgreSQL cho phép reconcile/requeue job dang dở sau sự cố. Điều này tránh mất pipeline nếu queue bị reset.
+
+## Giới hạn chất lượng MVP
+Không có SLA latency, concurrency hay RPO/RTO định lượng trong input; vì vậy không tự cam kết các con số chưa được yêu cầu. Các tham số concurrency, DB pool, SSE limit và timeout phải cấu hình qua environment và được đo bằng load test theo dataset thực tế trước triển khai. Tần suất job dọn upload dang dở/orphan object cũng là tham số cấu hình được, cần đo bằng dữ liệu vận hành thực tế trước khi cố định. Đây là open item tác động chi tiết, không thay đổi kiến trúc cốt lõi.

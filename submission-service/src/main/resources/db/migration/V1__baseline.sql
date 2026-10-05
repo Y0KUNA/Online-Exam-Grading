@@ -1,0 +1,3 @@
+CREATE TABLE audit_log (id uuid PRIMARY KEY, actor_id uuid, action varchar(64) NOT NULL, entity_type varchar(80) NOT NULL, entity_id uuid, occurred_at timestamptz NOT NULL DEFAULT now(), detail jsonb);
+CREATE TABLE idempotency_record (id uuid PRIMARY KEY, actor_id uuid, operation varchar(120) NOT NULL, idempotency_key varchar(255) NOT NULL, response_code integer NOT NULL, response_body jsonb, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE (actor_id, operation, idempotency_key));
+CREATE TABLE submission_event (sequence bigserial PRIMARY KEY, submission_id uuid NOT NULL, status varchar(32) NOT NULL, progress smallint NOT NULL, created_at timestamptz NOT NULL DEFAULT now());

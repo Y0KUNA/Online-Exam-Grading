@@ -1,0 +1,8 @@
+rootProject.name = 'online-exam-grading'
+
+include 'common'
+include 'api-gateway'
+include 'identity-service'
+include 'submission-service'
+include 'exam-grading-service'
+include 'result-review-service'

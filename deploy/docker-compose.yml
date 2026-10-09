@@ -1,34 +1,61 @@
 services:
   postgres-identity:
     image: postgres:16-alpine
-    environment: { POSTGRES_DB: identity_db, POSTGRES_USER: ${POSTGRES_USER}, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} }
+    environment:
+      POSTGRES_DB: identity_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports: ["5432:5432"]
     volumes: [identity-data:/var/lib/postgresql/data]
   postgres-submission:
     image: postgres:16-alpine
-    environment: { POSTGRES_DB: submission_db, POSTGRES_USER: ${POSTGRES_USER}, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} }
+    environment:
+      POSTGRES_DB: submission_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports: ["5433:5432"]
     volumes: [submission-data:/var/lib/postgresql/data]
   postgres-exam-grading:
     image: postgres:16-alpine
-    environment: { POSTGRES_DB: exam_grading_db, POSTGRES_USER: ${POSTGRES_USER}, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} }
+    environment:
+      POSTGRES_DB: exam_grading_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports: ["5434:5432"]
     volumes: [exam-grading-data:/var/lib/postgresql/data]
   postgres-result-review:
     image: postgres:16-alpine
-    environment: { POSTGRES_DB: result_review_db, POSTGRES_USER: ${POSTGRES_USER}, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} }
+    environment:
+      POSTGRES_DB: result_review_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports: ["5435:5432"]
     volumes: [result-review-data:/var/lib/postgresql/data]
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    environment: { RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}, RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS} }
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     ports: ["5672:5672", "15672:15672"]
   minio:
     image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     command: server /data --console-address :9001
-    environment: { MINIO_ROOT_USER: ${S3_ACCESS_KEY}, MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY} }
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
     ports: ["9000:9000", "9001:9001"]
     volumes: [minio-data:/data]
+  minio-init:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    depends_on: [minio]
+    restart: "no"
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    entrypoint: >-
+      /bin/sh -c "until mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY; do sleep 2; done;
+      mc mb --ignore-existing local/original; mc mb --ignore-existing local/anonymized;
+      mc anonymous set none local/original; mc anonymous set none local/anonymized"
 volumes:
   identity-data: {}
   submission-data: {}

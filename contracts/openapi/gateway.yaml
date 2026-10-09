@@ -1,0 +1,30 @@
+openapi: 3.0.3
+info:
+  title: Online Exam Grading Gateway
+  version: 0.1.0
+paths:
+  /api/v1/auth/login:
+    post:
+      summary: Public Identity login route
+      responses:
+        '200': { description: JWT issued by Identity service }
+  /.well-known/jwks.json:
+    get:
+      summary: Public Identity JWKS route
+      responses:
+        '200': { description: JWKS }
+  /storage/original/{objectKey}:
+    parameters: [{ name: objectKey, in: path, required: true, schema: { type: string } }]
+    post:
+      summary: Presigned POST pass-through; authorization is enforced by MinIO policy.
+      responses:
+        '204': { description: Object uploaded }
+        '403': { description: Invalid or expired storage signature }
+  /storage/anonymized/{objectKey}:
+    parameters: [{ name: objectKey, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Presigned GET pass-through; supports Range requests.
+      responses:
+        '200': { description: Object stream }
+        '206': { description: Partial object stream }
+        '403': { description: Invalid or expired storage signature }

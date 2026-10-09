@@ -1,3 +1,6 @@
 plugins { id 'java-library' }
 
-dependencies { }
+dependencies {
+    api 'org.springframework:spring-web:6.2.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}

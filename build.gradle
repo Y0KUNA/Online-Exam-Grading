@@ -18,4 +18,18 @@ subprojects {
 
     tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
     tasks.withType(Test).configureEach { useJUnitPlatform() }
+    dependencyLocking { lockAllConfigurations() }
+
+    tasks.register('verifySourceHygiene') {
+        group = 'verification'
+        description = 'Fails when Java/YAML sources contain trailing whitespace.'
+        doLast {
+            fileTree(projectDir) { include 'src/**/*.java', 'src/**/*.yml', 'src/**/*.yaml' }.each { file ->
+                file.readLines('UTF-8').eachWithIndex { line, index ->
+                    if (line ==~ /.*[ \\t]+$/) throw new GradleException("Trailing whitespace: ${file}:${index + 1}")
+                }
+            }
+        }
+    }
+    tasks.named('check') { dependsOn tasks.named('verifySourceHygiene') }
 }

@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:tc:postgresql:16-alpine:///exam_grading_db}
+    username: ${TEST_DB_USER:exam_grading}
+    password: ${TEST_DB_PASSWORD:change-me}
+  flyway:
+    enabled: true

@@ -3,6 +3,7 @@ package vn.edu.examgrading.gateway.filter;
 import java.time.Clock;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,7 @@ public final class StorageRateLimitFilter implements WebFilter, Ordered {
     private final Clock clock;
     private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
 
+    @Autowired
     public StorageRateLimitFilter(Environment environment) {
         this(environment.getProperty("app.storage.rate-limit-per-minute", Integer.class, 120), Clock.systemUTC());
     }

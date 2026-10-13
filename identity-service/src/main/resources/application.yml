@@ -7,3 +7,12 @@ spring:
     password: ${DB_PASSWORD:change-me}
   jpa.hibernate.ddl-auto: validate
   flyway.enabled: true
+management.endpoints.web.exposure.include: health,info
+app.auth:
+  issuer: ${JWT_ISSUER:https://identity.local}
+  ttl-minutes: ${JWT_TTL_MINUTES:15}
+  local-enabled: ${AUTH_LOCAL_ENABLED:true}
+  login-max-failures: ${LOGIN_MAX_FAILURES:5}
+  login-lock-minutes: ${LOGIN_LOCK_MINUTES:15}
+  bootstrap-username: ${BOOTSTRAP_ADMIN_USERNAME:}
+  bootstrap-password: ${BOOTSTRAP_ADMIN_PASSWORD:}

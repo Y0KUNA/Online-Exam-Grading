@@ -1,0 +1,10 @@
+ALTER TABLE users ADD CONSTRAINT uq_users_user_id_role UNIQUE (user_id, role);
+ALTER TABLE graders ADD COLUMN role VARCHAR(30) NOT NULL DEFAULT 'GRADER' CHECK (role = 'GRADER');
+ALTER TABLE graders ADD CONSTRAINT fk_graders_user FOREIGN KEY (user_id, role) REFERENCES users (user_id, role) ON DELETE RESTRICT;
+CREATE UNIQUE INDEX uq_users_username_lower ON users (lower(username));
+CREATE UNIQUE INDEX uq_users_email_lower ON users (lower(email)) WHERE email IS NOT NULL;
+ALTER TABLE users ADD COLUMN failed_login_count INT NOT NULL DEFAULT 0 CHECK (failed_login_count >= 0), ADD COLUMN locked_until TIMESTAMPTZ, ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$ BEGIN NEW.updated_at = CURRENT_TIMESTAMP; RETURN NEW; END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_graders_updated_at BEFORE UPDATE ON graders FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE INDEX idx_users_role_active ON users (role, is_active);

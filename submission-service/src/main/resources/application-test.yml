@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:tc:postgresql:16-alpine:///submission_db}
+    username: ${TEST_DB_USER:exam_grading}
+    password: ${TEST_DB_PASSWORD:change-me}
+  rabbitmq:
+    addresses: ${TEST_RABBITMQ_URL:amqp://localhost:5672}
+  flyway:
+    enabled: true

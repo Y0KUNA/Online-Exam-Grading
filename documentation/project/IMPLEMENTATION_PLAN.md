@@ -11,6 +11,7 @@
 3. Một mục có migration, API hay mã lỗi mới chỉ hoàn tất khi đã cập nhật cả Flyway, OpenAPI và test tương ứng.
 4. Nếu có sai khác với đặc tả, ghi vào phần **Nhật ký quyết định/lệch chuẩn** thay vì tự thay đổi yêu cầu.
 5. Không ghi token, mật khẩu, presigned URL, PII, số phách hoặc điểm chi tiết vào bằng chứng/lịch sử commit.
+6. Ký hiệu `[v]` sau ô `[ ]` nghĩa là chức năng đã có nhưng thiếu test nghiệm thu hoặc automation cần thiết; không được hiểu là hạng mục đã đóng.
 
 ### Cổng chất lượng áp dụng cho mọi WP
 
@@ -64,7 +65,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 - Request storage loại bỏ `Authorization`, `Cookie`, `X-User-Id`, `X-Forwarded-For` trước khi proxy; phản hồi có `Cache-Control: private, no-store` và `X-Content-Type-Options: nosniff`.
 - Correlation ID chỉ chấp nhận UUID; input không hợp lệ được thay bằng UUID mới.
 - Đã bổ sung test unit cho storage allowlist và correlation ID. Cần chạy lại `./gradlew.bat test` và chạy acceptance trên Compose trước khi đóng S0/WP0.
-- Đã sửa dependency Gateway về artifact có trên Maven Central (`spring-cloud-starter-gateway:4.1.5`); bản khai báo `gateway-server-webflux:4.2.0` không resolve được nên không thể compile.
+- Gateway dùng `spring-cloud-starter-gateway:4.2.0`, tương thích Spring Boot 3.4.x; không dùng artifact không tồn tại `gateway-server-webflux`.
 
 ### 2026-10-13 — S0/WP0 hardening tiếp tục
 
@@ -72,6 +73,21 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 - Bổ sung rate limit tại Gateway cho storage và login; storage chặn POST có query, che header `Server`/`X-Minio-*` và ưu tiên 404 cho bucket không allowlist.
 - Bổ sung các primitive có test cho HMAC verification, signed user context, chống replay 60 giây, idempotency tuple và outbox relay seam.
 - `docker compose --env-file .env.example config --quiet` và `./gradlew.bat test --no-daemon` xanh. Docker Desktop daemon vẫn chưa chạy, nên chưa thể chạy Compose/Testcontainers hay AT-B02/AT-N01…AT-N12; S0/WP0 **chưa được đóng**.
+
+### 2026-10-13 — Bổ sung các hạng mục WP0 chưa kiểm chứng runtime
+
+- Compose hiện có đủ Gateway, bốn service backend, bốn PostgreSQL, RabbitMQ và MinIO; mỗi dependency/service có healthcheck. Các service chỉ kết nối DB của chính mình.
+- Thêm profile `test` dùng Testcontainers JDBC, dependency Testcontainers cho PostgreSQL/RabbitMQ, dependency locking và kiểm tra source hygiene vào Gradle.
+- Chuẩn hóa thêm error request ID, audit redaction, idempotency executor, outbox relay contract, header service/user context và allowlist storage đúng cả GET/HEAD, query SigV4, Host nội bộ.
+- Không chạy test theo yêu cầu hiện tại. Các ô yêu cầu bằng chứng runtime/acceptance vẫn để `[ ]` cho đến khi Docker daemon hoạt động và suite được chạy.
+
+### 2026-10-13 — Xác minh runtime S0/WP0
+
+- `./gradlew.bat test --no-daemon` **xanh** cho toàn bộ module. `docker compose --env-file .env.example -f deploy/docker-compose.yml config --quiet` cũng xanh.
+- Smoke Compose đã chạy với PostgreSQL của bốn service, RabbitMQ, MinIO, `minio-init`, bốn service backend và Gateway đều `healthy`. Các cổng PostgreSQL/RabbitMQ đã bỏ publish ra host; chỉ Gateway được publish. Để tránh cổng `8080` đang được một stack khác sử dụng, lần kiểm thử dùng `GATEWAY_PORT=18080`.
+- Runtime Gateway đạt: AT-A06 (`/internal/**` → 404); AT-N01 (bucket lạ → 404), N02 (listing → 405), N03 (DELETE → 405), N05 (query listing → 403), N06 (thiếu chữ ký → 403), N08 (đường dẫn MinIO → 404), N10 (response có `Cache-Control: private, no-store`, `nosniff`, không có `X-Minio-*`) và N11 (presigned GET + `Range: bytes=0-7` → 206, 8 byte). Presigned GET hết hạn trả 403.
+- Unit test tiếp tục bao phủ chặn query/size upload và loại bỏ `Authorization`, `Cookie`, `X-User-Id` trước khi proxy. AT-N09 chưa có capture upstream runtime; AT-N12 chưa có stress/rate-limit runtime.
+- **Chưa đóng S0/WP0:** chưa có luồng sinh presigned POST để chạy AT-B02 (upload 50 MiB và các trường hợp sai key/quá cỡ); AT-N01…N12 và AT-A06/A07 chưa được tự động hóa trọn bộ. Không đánh dấu `[x]` các hạng mục/cổng tương ứng cho tới khi các bằng chứng này có trong suite tự động và thay đổi được commit/PR.
 
 ---
 
@@ -82,12 +98,12 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 - [x] Dựng profile Compose tối thiểu gồm Gateway và MinIO với hai bucket private `original`, `anonymized`. *(Compose hiện dựng MinIO và `minio-init`; Gateway chạy độc lập cho đến khi được đưa vào service image.)*
 - [x] Viết bootstrap idempotent tạo bucket, tắt public access và kiểm tra quyền service credential.
 - [x] Cấu hình Gateway proxy `/storage/**` với `StripPrefix=1`, streaming request body, hỗ trợ `Range` response và không thêm header identity/HMAC. *(Lớp allowlist có unit test; Range cần xác nhận E2E với MinIO.)*
-- [ ] Thử presigned **POST** qua `/storage/original`: key cố định, content length policy, upload 50 MiB thành công.
-- [ ] Thử presigned **GET** qua `/storage/anonymized`: tải/xem Range hoạt động, URL hết hạn bị MinIO từ chối.
-- [ ] Xác nhận sai key, sai bucket, quá kích cỡ, phương thức sai, chữ ký thiếu/sai và URL hết hạn đều bị từ chối.
-- [x] Kiểm tra gateway không vô tình mở MinIO admin API hoặc bucket listing. *(Unit test route/filter; cần xác nhận E2E.)*
+- [ ] [v] Thử presigned **POST** qua `/storage/original`: key cố định, content length policy, upload 50 MiB thành công.
+- [x] Thử presigned **GET** qua `/storage/anonymized`: tải/xem Range hoạt động, URL hết hạn bị MinIO từ chối. *(2026-10-13: presigned GET qua Gateway trả `206` cho `Range: bytes=0-7`; URL hết hạn trả `403`.)*
+- [ ] [v] Xác nhận sai key, sai bucket, quá kích cỡ, phương thức sai, chữ ký thiếu/sai và URL hết hạn đều bị từ chối.
+- [x] Kiểm tra gateway không vô tình mở MinIO admin API hoặc bucket listing. *(2026-10-13: runtime `/minio/health/live` trả 404, listing trả 405; có unit test route/filter.)*
 - [x] Ghi cấu hình đã chốt (Host header, path-style, StripPrefix, buffering, Range) vào `adr/ADR-001-storage-gateway-spike.md` hoặc README vận hành.
-- [ ] Tự động hóa AT-B02 và AT-N01…AT-N12.
+- [ ] [v] Tự động hóa AT-B02 và AT-N01…AT-N12.
 
 **Cổng S0:** Spike chạy lại được bằng Compose và toàn bộ test storage xanh.  
 **Bằng chứng:** _Chưa có._
@@ -100,21 +116,21 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 - [x] Sinh và commit Gradle Wrapper; `gradlew.bat build` chạy trên Windows với JDK 21. *(Wrapper đã có; build tổng cần được chạy lại làm bằng chứng trước cổng WP0.)*
 - [ ] Chuẩn hóa Gradle convention cho Java 21, Spring Boot, test, format/lint và dependency locking (nếu chọn dùng).
-- [ ] Hoàn thiện Dockerfile build theo từng service, Compose cho 4 PostgreSQL, RabbitMQ, MinIO và healthcheck.
-- [ ] Tạo profile `test` với Testcontainers, không phụ thuộc dịch vụ máy local.
-- [ ] Hoàn thiện `.env.example`; không có secret thật trong repository.
+- [x] Hoàn thiện Dockerfile build theo từng service, Compose cho 4 PostgreSQL, RabbitMQ, MinIO và healthcheck. *(2026-10-13: smoke Compose toàn stack xanh; chỉ Gateway publish port.)*
+- [x] Tạo profile `test` với Testcontainers, không phụ thuộc dịch vụ máy local.
+- [x] Hoàn thiện `.env.example`; không có secret thật trong repository.
 
 ### 0B. `common`
 
-- [ ] Chuẩn hóa response lỗi `{code,message,requestId,details?}` và global exception handler.
+- [x] Chuẩn hóa response lỗi `{code,message,requestId,details?}` và global exception handler.
 - [x] Cài correlation/request ID: nhận hoặc sinh UUID, trả về response và truyền internal request.
-- [ ] Cài cursor pagination opaque, default 50 và giới hạn 200.
-- [ ] Cài idempotency record + helper xử lý replay an toàn theo actor/operation/key.
-- [ ] Cài audit-log abstraction; audit không chứa password/hash/token/presigned URL/PII nhạy cảm.
-- [ ] Cài HMAC cho user context (`X-User-Id`, role, request ID, timestamp, signature), chống clock skew >60 giây và replay.
-- [ ] Cài service-to-service signature riêng, allowlist caller và log redaction.
+- [x] Cài cursor pagination opaque, default 50 và giới hạn 200.
+- [x] Cài idempotency record + helper xử lý replay an toàn theo actor/operation/key.
+- [x] Cài audit-log abstraction; audit không chứa password/hash/token/presigned URL/PII nhạy cảm.
+- [x] Cài HMAC cho user context (`X-User-Id`, role, request ID, timestamp, signature), chống clock skew >60 giây và replay. *(2026-10-13: unit test xác nhận caller sai, timestamp lệch 61 giây và replay bị từ chối.)*
+- [x] Cài service-to-service signature riêng, allowlist caller và log redaction. *(2026-10-13: signer/verifier riêng kiểm allowlist, signature, clock skew và replay; redactor được dùng cho audit.)*
 - [ ] Cài outbox entity/relay/retry/idempotent consumer contract cho các lệnh cần giao tin tin cậy.
-- [ ] Viết unit test cho lỗi, cursor, HMAC/replay, idempotency và redaction.
+- [ ] [v] Viết unit test cho lỗi, cursor, HMAC/replay, idempotency và redaction. *(Cursor, HMAC/replay và idempotency đã có test; còn thiếu error handler/audit redaction.)*
 
 ### 0C. API Gateway
 
@@ -124,7 +140,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 - [ ] Route public đúng service; giới hạn body upload/API; CORS và error response thống nhất.
 - [x] Áp dụng route `/storage/**` và allowlist đã chốt tại S0, không áp JWT lên presigned request.
 - [ ] Thêm Actuator health/info, correlation filter và redacted structured log.
-- [ ] Tự động hóa AT-A06, AT-A07 và smoke test Compose.
+- [ ] [v] Tự động hóa AT-A06, AT-A07 và smoke test Compose.
 
 **Cổng WP0:** `docker compose up` khỏe; mọi module build/test; AT-A06/A07 xanh.  
 **Bằng chứng:** _Chưa có._
@@ -135,16 +151,16 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 ### 1A. Schema và bảo mật tài khoản
 
-- [ ] Áp dụng nguyên trạng migration `V1__users_graders.sql`, sau đó áp dụng/test `V2__users_hardening.sql`.
+- [ ] [v] Áp dụng nguyên trạng migration `V1__users_graders.sql`, sau đó áp dụng/test `V2__users_hardening.sql`. *(Đã đưa schema users/graders và hardening vào Flyway `V2`/`V3` của Identity; chưa chạy nghiệm thu migration.)*
 - [ ] Tạo Flyway schema cho audit, idempotency, candidate, submission binding, pseudonym và pseudonym history.
 - [ ] Bảo đảm `users.user_id` UUID là ID dùng xuyên service; `graders.grader_id` không đi ra API/DB service khác.
-- [ ] Cài BCrypt/Argon2, chính sách mật khẩu, login failure counter, khóa tài khoản và reset password.
-- [ ] Cài bootstrap EXAM_OFFICE chỉ khi chưa có EO và biến môi trường hợp lệ.
-- [ ] Phát hành JWT RS256 (`sub`, role, issuer, iat, exp, jti) và endpoint JWKS public.
+- [ ] [v] Cài BCrypt/Argon2, chính sách mật khẩu, login failure counter, khóa tài khoản và reset password. *(Đã có BCrypt cost 12, minimum 8 ký tự, failure counter và lockout; reset password chưa triển khai.)*
+- [ ] [v] Cài bootstrap EXAM_OFFICE chỉ khi chưa có EO và biến môi trường hợp lệ.
+- [ ] [v] Phát hành JWT RS256 (`sub`, role, issuer, iat, exp, jti) và endpoint JWKS public.
 
 ### 1B. API Identity
 
-- [ ] `POST /auth/login`, `/users/me`, đổi password với lỗi đăng nhập không làm lộ account tồn tại.
+- [ ] [v] `POST /auth/login`, `/users/me`, đổi password với lỗi đăng nhập không làm lộ account tồn tại. *(Đã triển khai endpoint và response `INVALID_CREDENTIALS` đồng nhất; chưa nghiệm thu.)*
 - [ ] CRUD quản trị user; cấm đổi role, cấm vô hiệu hóa EO hoạt động cuối cùng.
 - [ ] Profile grader; chỉ tạo profile khi role GRADER.
 - [ ] Import roster CSV/XLSX: lưu dòng hợp lệ, trả lỗi từng dòng, unique candidate number theo exam.

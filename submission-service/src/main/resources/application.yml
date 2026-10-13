@@ -8,3 +8,4 @@ spring:
   jpa.hibernate.ddl-auto: validate
   flyway.enabled: true
   rabbitmq.addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+management.endpoints.web.exposure.include: health,info

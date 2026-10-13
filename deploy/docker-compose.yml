@@ -5,7 +5,6 @@ services:
       POSTGRES_DB: identity_db
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports: ["5432:5432"]
     volumes: [identity-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -18,7 +17,6 @@ services:
       POSTGRES_DB: submission_db
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports: ["5433:5432"]
     volumes: [submission-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -31,7 +29,6 @@ services:
       POSTGRES_DB: exam_grading_db
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports: ["5434:5432"]
     volumes: [exam-grading-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -44,7 +41,6 @@ services:
       POSTGRES_DB: result_review_db
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports: ["5435:5432"]
     volumes: [result-review-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -56,7 +52,6 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-    ports: ["5672:5672", "15672:15672"]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
@@ -75,7 +70,7 @@ services:
       timeout: 5s
       retries: 20
   minio-init:
-    image: minio/minio@RELEASE.2025-09-07T16-13-09Z
+    image: minio/mc:latest
     depends_on:
       minio:
         condition: service_healthy
@@ -95,6 +90,7 @@ services:
         SERVICE: api-gateway
     environment:
       S3_INTERNAL_ENDPOINT: http://minio:9000
+      S3_UPSTREAM_HOST: minio:9000
       IDENTITY_URL: http://identity-service:8081
       SUBMISSION_URL: http://submission-service:8082
       EXAM_GRADING_URL: http://exam-grading-service:8083
@@ -102,12 +98,86 @@ services:
       JWT_JWKS_URI: http://identity-service:8081/.well-known/jwks.json
       MAX_PDF_BYTES: ${MAX_PDF_BYTES}
       STORAGE_RATE_LIMIT_PER_MINUTE: ${STORAGE_RATE_LIMIT_PER_MINUTE}
-    ports: ["8080:8080"]
+    ports: ["${GATEWAY_PORT:-8080}:8080"]
     depends_on:
       minio-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  identity-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args: { SERVICE: identity-service }
+    environment:
+      DB_URL: jdbc:postgresql://postgres-identity:5432/identity_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES}
+      AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED}
+      LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
+    depends_on:
+      postgres-identity: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  submission-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args: { SERVICE: submission-service }
+    environment:
+      DB_URL: jdbc:postgresql://postgres-submission:5432/submission_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
+    depends_on:
+      postgres-submission: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  exam-grading-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args: { SERVICE: exam-grading-service }
+    environment:
+      DB_URL: jdbc:postgresql://postgres-exam-grading:5432/exam_grading_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      postgres-exam-grading: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  result-review-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args: { SERVICE: result-review-service }
+    environment:
+      DB_URL: jdbc:postgresql://postgres-result-review:5432/result_review_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      postgres-result-review: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8084/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12

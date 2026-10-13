@@ -12,16 +12,33 @@ import reactor.core.publisher.Mono;
 @Component
 public class CorrelationIdFilter implements GlobalFilter, Ordered {
     public static final String HEADER = "X-Request-Id";
-    @Override public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String requestId = exchange.getRequest().getHeaders().getFirst(HEADER);
-        if (!isUuid(requestId)) requestId = UUID.randomUUID().toString();
+        if (!isUuid(requestId)) {
+            requestId = UUID.randomUUID().toString();
+        }
         ServerHttpRequest request = exchange.getRequest().mutate().header(HEADER, requestId).build();
         exchange.getResponse().getHeaders().set(HEADER, requestId);
         return chain.filter(exchange.mutate().request(request).build());
     }
+
     private boolean isUuid(String value) {
-        if (value == null || value.isBlank()) return false;
-        try { UUID.fromString(value); return true; } catch (IllegalArgumentException ignored) { return false; }
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        try {
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
-    @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
+
+    @Override
+    public int getOrder() {
+        return Ordered.HIGHEST_PRECEDENCE;
+    }
 }
+

@@ -7,3 +7,4 @@ spring:
     password: ${DB_PASSWORD:change-me}
   jpa.hibernate.ddl-auto: validate
   flyway.enabled: true
+management.endpoints.web.exposure.include: health,info

@@ -12,7 +12,7 @@ Thứ tự ưu tiên khi mâu thuẫn:
 Quy tắc bắt buộc:
 - Đọc README.md, 10-implementation-spec.md, 11-acceptance-tests.md, 12-agent-work-plan.md, 13-user-table.md trước khi viết code.
 - Làm tuần tự theo work package WP0..WP9. Chỉ chuyển WP khi toàn bộ test của WP hiện tại xanh.
-- Mục [CẦN XÁC NHẬN] thì dùng giá trị mặc định đã ghi, đặt sau cấu hình, và ghi vào docs/ASSUMPTIONS.md.
+- Mục [CẦN XÁC NHẬN] thì dùng giá trị mặc định đã ghi, đặt sau cấu hình, và ghi vào `../project/ASSUMPTIONS.md`.
 - Schema Identity DB (`users`, `graders`) đã do chủ dự án tạo: dùng `sql/identity/V1__users_graders.sql` nguyên trạng, thêm V2 (đề xuất) sau khi test migration. `users.user_id` là ID người dùng duy nhất ở mọi service.
 - Không truy vấn DB của service khác. Không để GRADER/COUNCIL nhận được danh tính hoặc bản ORIGINAL.
 - Không đưa JWT, presigned URL, phách, họ tên, điểm từng câu vào log.

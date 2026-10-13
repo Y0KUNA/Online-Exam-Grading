@@ -1,6 +1,10 @@
 # Online Exam Grading — Backend
 
-Backend monorepo for the essay-exam digitization and grading system. The design follows `exam-grading-spec/10-implementation-spec.md`: Java 21, Spring Boot, Gradle multi-module, database-per-service, RabbitMQ only for the PDF processing pipeline, PostgreSQL and MinIO.
+Backend monorepo for the essay-exam digitization and grading system. The design follows
+[`documentation/specification/10-implementation-spec.md`](documentation/specification/10-implementation-spec.md):
+Java 21, Spring Boot, Gradle multi-module, database-per-service, RabbitMQ only for the PDF
+processing pipeline, PostgreSQL and MinIO. The complete documentation map is at
+[`documentation/README.md`](documentation/README.md).
 
 ## Modules
 
@@ -16,7 +20,7 @@ Each service owns its migration directory and database; never use another servic
 ## Start
 
 1. Copy `.env.example` to `.env` and replace every secret.
-2. Start local infrastructure with `docker compose -f deploy/docker-compose.yml up -d`.
-3. Build all modules with `gradle build` (Java 21 required). Commit the Gradle wrapper (`gradlew`, `gradlew.bat`, `gradle/wrapper/`) once Gradle is available on the development machine.
+2. Start the local stack (including the public Gateway) with `docker compose --env-file .env up -d --build`.
+3. Build all modules with `./gradlew.bat build` on Windows (Java 21 required).
 
-The modules are intentionally a production-oriented scaffold: API and domain packages are present, but business endpoints are added work-package by work-package from `exam-grading-spec`.
+The modules are intentionally a production-oriented scaffold: API and domain packages are present, but business endpoints are added work-package by work-package from the implementation specification.

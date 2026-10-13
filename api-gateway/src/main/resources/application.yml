@@ -1,23 +1,37 @@
 server.port: ${SERVER_PORT:8080}
+app.storage:
+  max-pdf-bytes: ${MAX_PDF_BYTES:52428800}
+  rate-limit-per-minute: ${STORAGE_RATE_LIMIT_PER_MINUTE:120}
+app.login.rate-limit-per-minute: ${LOGIN_RATE_LIMIT_PER_MINUTE:10}
 spring:
   application.name: api-gateway
   codec.max-in-memory-size: 1MB
   security.oauth2.resourceserver.jwt.jwk-set-uri: ${JWT_JWKS_URI:http://localhost:8081/.well-known/jwks.json}
-  cloud.gateway.routes:
-    - id: identity
-      uri: ${IDENTITY_URL:http://localhost:8081}
-      predicates: [ Path=/api/v1/auth/**,/api/v1/users/**,/api/v1/exams/*/candidates/**,/.well-known/jwks.json ]
-    - id: submission
-      uri: ${SUBMISSION_URL:http://localhost:8082}
-      predicates: [ Path=/api/v1/submissions/**,/api/v1/paper-templates/**,/api/v1/exams/*/submissions/** ]
-    - id: exam-grading
-      uri: ${EXAM_GRADING_URL:http://localhost:8083}
-      predicates: [ Path=/api/v1/exams/**,/api/v1/grading/** ]
-    - id: result-review
-      uri: ${RESULT_REVIEW_URL:http://localhost:8084}
-      predicates: [ Path=/api/v1/reviews/** ]
-    - id: storage
-      uri: ${S3_INTERNAL_ENDPOINT:http://localhost:9000}
-      predicates: [ Path=/storage/original/**,/storage/anonymized/** ]
-      filters: [ StripPrefix=1 ]
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+            allowedMethods: [GET, POST, PUT, DELETE, OPTIONS]
+            allowedHeaders: [Authorization, Content-Type, Idempotency-Key, X-Request-Id]
+            exposedHeaders: [X-Request-Id]
+      routes:
+        - id: identity
+          uri: ${IDENTITY_URL:http://localhost:8081}
+          predicates: [ Path=/api/v1/auth/**,/api/v1/users/**,/api/v1/exams/*/candidates/**,/.well-known/jwks.json ]
+        - id: submission
+          uri: ${SUBMISSION_URL:http://localhost:8082}
+          predicates: [ Path=/api/v1/submissions/**,/api/v1/paper-templates/**,/api/v1/exams/*/submissions/** ]
+        - id: exam-grading
+          uri: ${EXAM_GRADING_URL:http://localhost:8083}
+          predicates: [ Path=/api/v1/exams/**,/api/v1/grading/** ]
+        - id: result-review
+          uri: ${RESULT_REVIEW_URL:http://localhost:8084}
+          predicates: [ Path=/api/v1/reviews/** ]
+        - id: storage
+          uri: ${S3_INTERNAL_ENDPOINT:http://localhost:9000}
+          predicates: [ Path=/storage/original,/storage/anonymized/** ]
+          filters: [ StripPrefix=1 ]
 management.endpoints.web.exposure.include: health,info
+management.endpoint.health.probes.enabled: true

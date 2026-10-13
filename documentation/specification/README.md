@@ -24,7 +24,7 @@
 - **Thay file scan** (`replace-file`, §4.4), **người dùng** (`users` + `graders`, file 13), **RabbitMQ có queue `validate`** (§8).
 
 ## Các vấn đề cần chốt để quyết định
-Bảng dưới đây là danh sách các điểm còn lại mà chủ dự án cần xác nhận trước khi bắt tay vào triển khai chính thức. Nếu không chốt trong vòng ngắn, agent sẽ dùng giá trị mặc định ghi trong file 10 §1.2 và ghi vào docs/ASSUMPTIONS.md.
+Bảng dưới đây là danh sách các điểm còn lại mà chủ dự án cần xác nhận trước khi bắt tay vào triển khai chính thức. Nếu không chốt trong vòng ngắn, agent sẽ dùng giá trị mặc định ghi trong file 10 §1.2 và ghi vào `../project/ASSUMPTIONS.md`.
 
 | Mã | Vấn đề cần quyết định | Giá trị mặc định đã ghi | Ghi chú |
 |---|---|---|---|
@@ -42,7 +42,7 @@ Bảng dưới đây là danh sách các điểm còn lại mà chủ dự án c
 | Q-15 | Khi retry reprocess với template mới | Cho phép `templateId`, thay đổi `Submission.template_id` | Không đổi `Exam.template_id` |
 
 ## Mức sẵn sàng để sinh agent
-Tài liệu hiện tại đã đủ để bắt đầu build trong phạm vi backend, nhưng cần có một lần xác nhận chủ dự án cho các mục trên trước khi đóng gói release hoặc đánh giá production. Với các mục không xác nhận, dùng giá trị mặc định ghi trong file 10 §1.2 và ghi rõ vào docs/ASSUMPTIONS.md.
+Tài liệu hiện tại đã đủ để bắt đầu build trong phạm vi backend, nhưng cần có một lần xác nhận chủ dự án cho các mục trên trước khi đóng gói release hoặc đánh giá production. Với các mục không xác nhận, dùng giá trị mặc định ghi trong file 10 §1.2 và ghi rõ vào `../project/ASSUMPTIONS.md`.
 
 ## Hai điểm kỹ thuật rủi ro cao
 1. **Ẩn danh bằng cách phủ hình chữ nhật không an toàn** với PDF scan (ảnh gốc vẫn còn trong file). Đặc tả yêu cầu rasterize trang 1 (file 10 §7, test AT-C03).

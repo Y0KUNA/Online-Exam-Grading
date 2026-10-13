@@ -10,7 +10,7 @@
 
 ## Trạng thái tài liệu
 
-Tài liệu này đã ở mức sẵn sàng để làm việc với coding agent, với điều kiện: các mục trong §1.2 được coi là mặc định phòng khi chủ dự án chưa chốt. Khi không có quyết định chính thức, giá trị mặc định ở §1.2 được áp dụng và phải được ghi trong docs/ASSUMPTIONS.md cùng với lý do và bối cảnh.
+Tài liệu này đã ở mức sẵn sàng để làm việc với coding agent, với điều kiện: các mục trong §1.2 được coi là mặc định phòng khi chủ dự án chưa chốt. Khi không có quyết định chính thức, giá trị mặc định ở §1.2 được áp dụng và phải được ghi trong `../project/ASSUMPTIONS.md` cùng với lý do và bối cảnh.
 
 Tài liệu này là nguồn chính cho implementation và acceptance test, và phải được coi là “ready-for-agent” sau khi các quyết định ở bảng dưới đây được xác nhận hoặc dùng mặc định.
 
@@ -34,7 +34,7 @@ Khi các tài liệu mâu thuẫn, áp dụng thứ tự sau (cao → thấp):
 
 Quy tắc cho agent:
 - Mọi logic thời gian dùng `java.time.Clock` được inject (cần cho test hết hạn/retention/hết TTL), không gọi `Instant.now()` trực tiếp.
-- Không tự bịa quyết định nghiệp vụ. Mục nào đánh dấu **[CẦN XÁC NHẬN]** thì cài theo giá trị mặc định đã ghi, đặt sau cấu hình/feature flag, và ghi vào `docs/ASSUMPTIONS.md`.
+- Không tự bịa quyết định nghiệp vụ. Mục nào đánh dấu **[CẦN XÁC NHẬN]** thì cài theo giá trị mặc định đã ghi, đặt sau cấu hình/feature flag, và ghi vào `../project/ASSUMPTIONS.md`.
 - Mọi endpoint, bảng, mã lỗi mới phải được cập nhật vào OpenAPI/Flyway tương ứng.
 - Không service nào truy vấn DB của service khác. Không đưa PII/phách/điểm câu vào log.
 
@@ -73,7 +73,7 @@ Quy tắc cho agent:
 
 Đã chốt bởi chủ dự án (không còn là câu hỏi mở): phúc khảo sau FINALIZED (D-12), Hội đồng quyết định mọi review (D-13, D-20), retention không gia hạn (D-15), bảng User (D-14), xác nhận gán roster ở giao diện (D-22).
 
-> Quy tắc vận hành: nếu người quyết định chưa phản hồi, agent dùng giá trị mặc định dưới đây; giá trị đó phải được lưu vào docs/ASSUMPTIONS.md với tên biến/config tương ứng. Những mục ghi "đã chốt" không cần thêm xác nhận.
+> Quy tắc vận hành: nếu người quyết định chưa phản hồi, agent dùng giá trị mặc định dưới đây; giá trị đó phải được lưu vào `../project/ASSUMPTIONS.md` với tên biến/config tương ứng. Những mục ghi "đã chốt" không cần thêm xác nhận.
 
 | ID | Vấn đề | Mặc định |
 |---|---|---|

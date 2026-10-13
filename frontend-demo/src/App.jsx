@@ -1,90 +1,66 @@
 import { useState } from "react";
 import "./App.css";
 import "./rubric.css";
+import { mockData } from "./mockData";
 
-const exam = {
-  id: "KTCT-HK1-2026",
-  name: "Thi kết thúc học phần Kinh tế chính trị",
-  subject: "Kinh tế chính trị Mác – Lênin",
-  time: "08:00 · 15/12/2026",
-  classes: "K66 · Lớp 01–08",
-  candidates: 184,
-  submitted: 176,
-  graded: 128,
-  issues: 7,
+const formatDateTime = (value) =>
+  new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(new Date(value)).replace(',', ' ·');
+
+const submissionStatusLabel = {
+  GRADING: 'Đang chấm',
+  READY_FOR_GRADING: 'Sẵn sàng chấm',
+  REVIEW_REQUIRED: 'Cần xử lý',
+  COMPLETED: 'Đã chấm',
 };
-const exams = [
-  exam,
-  {
-    id: "PLDC-HK1-2026",
-    name: "Thi kết thúc học phần Pháp luật đại cương",
-    subject: "Pháp luật đại cương",
-    time: "13:30 · 17/12/2026",
-    classes: "K66 · Lớp 01–06",
-    candidates: 156,
-    submitted: 149,
-    graded: 62,
-    issues: 2,
-  },
-  {
-    id: "THML-HK1-2026",
-    name: "Kiểm tra Triết học Mác – Lênin",
-    subject: "Triết học Mác – Lênin",
-    time: "08:00 · 21/12/2026",
-    classes: "K66 · Lớp 01–10",
-    candidates: 221,
-    submitted: 0,
-    graded: 0,
-    issues: 0,
-  },
-];
-const students = [
-  [
-    "P-9K4M",
-    "Nguyễn Minh An",
-    "SV2200248",
-    "15/12 · 09:18",
-    "Đang chấm",
-    "—",
-    "8.50",
-  ],
-  ["P-2H8Q", "Trần Gia Bảo", "SV2200312", "15/12 · 09:24", "Đã nộp", "—", "—"],
-  [
-    "P-7R1X",
-    "Lê Khánh Linh",
-    "SV2200417",
-    "15/12 · 09:31",
-    "Cần xử lý",
-    "Chênh lệch điểm",
-    "—",
-  ],
-  [
-    "P-5D6N",
-    "Hoàng Quốc Việt",
-    "SV2200556",
-    "15/12 · 09:42",
-    "Đã chấm",
-    "Báo cáo từ GK",
-    "7.75",
-  ],
-];
-const papers = [
-  ["P-9K4M", "1.50", "3.25", "3.75", "8.50", "Đang chấm"],
-  ["P-6F2A", "1.25", "—", "—", "—", "Chưa chấm"],
-  ["P-3L8V", "1.75", "3.50", "3.25", "8.50", "Đã chấm"],
-  ["P-7R1X", "1.50", "3.00", "2.50", "7.00", "Cần xử lý"],
-];
-const reviews = [
-  ["P-7R1X", "7.00", "9.00", "—", "Lệch 2.00 điểm, vượt ngưỡng 1.00"],
-  ["P-5D6N", "7.75", "7.50", "—", "Giám khảo báo cáo bài scan mờ"],
-  ["P-1A6K", "8.25", "8.50", "8.50", "Đã chốt bởi Hội đồng"],
-];
+const getExamSummary = (examId) => {
+  const submissions = mockData.submissions.filter((item) => item.examId === examId);
+  return {
+    candidates: mockData.candidates.filter((item) => item.examId === examId).length,
+    submitted: submissions.length,
+    graded: submissions.filter((item) => item.status === 'COMPLETED').length,
+    issues: mockData.reviews.filter((item) => item.examId === examId && item.status !== 'RESOLVED').length,
+  };
+};
+const exams = mockData.exams.map((item) => ({
+  ...item,
+  id: item.examCode,
+  time: formatDateTime(item.examTime),
+  day: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(item.examTime)),
+  month: `THG ${new Intl.DateTimeFormat('vi-VN', { month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(item.examTime))}`,
+  classes: item.gradeLevel,
+  ...getExamSummary(item.examId),
+}));
+const scoreBySubmission = { 'c08bc820-66a5-4bd3-8e1a-000000000001': '8.50', 'c08bc820-66a5-4bd3-8e1a-000000000004': '7.75' };
+const studentRows = (examId) => mockData.candidates.filter((candidate) => candidate.examId === examId).map((candidate) => {
+  const pseudonym = mockData.pseudonyms.find((item) => item.candidateId === candidate.candidateId);
+  const submission = pseudonym && mockData.submissions.find((item) => item.submissionId === pseudonym.submissionId);
+  if (!submission) return ['—', candidate.fullName, candidate.candidateNumber, '—', 'Chưa upload bài', '—', '—'];
+  const review = mockData.reviews.find((item) => item.submissionId === submission.submissionId);
+  return [pseudonym.value, candidate.fullName, candidate.candidateNumber, formatDateTime(submission.updatedAt), submissionStatusLabel[submission.status], review?.reason ?? '—', scoreBySubmission[submission.submissionId] ?? '—'];
+});
+const paperRows = (examId) => mockData.submissions.filter((submission) => submission.examId === examId).map((submission) => {
+  const pseudonym = mockData.pseudonyms.find((item) => item.submissionId === submission.submissionId);
+  const assignment = mockData.assignments.find((item) => item.submissionId === submission.submissionId);
+  const attempt = assignment && mockData.attempts.find((item) => item.assignmentId === assignment.assignmentId);
+  const scores = attempt ? mockData.questionScores.filter((item) => item.attemptId === attempt.attemptId) : [];
+  const byQuestion = (questionId) => scores.find((item) => item.questionId === questionId)?.score?.toFixed(2) ?? '—';
+  const total = scores.length ? scores.reduce((sum, item) => sum + item.score, 0).toFixed(2) : '—';
+  return [pseudonym.value, byQuestion(mockData.questions[0].questionId), byQuestion(mockData.questions[1].questionId), byQuestion(mockData.questions[2].questionId), total, assignment?.status === 'IN_PROGRESS' ? 'Đang chấm' : submissionStatusLabel[submission.status]];
+});
+const reviewRows = (examId) => mockData.reviews.filter((review) => review.examId === examId).map((review) => {
+  const pseudonym = mockData.pseudonyms.find((item) => item.submissionId === review.submissionId);
+  const decision = mockData.councilDecisions.find((item) => item.reviewId === review.reviewId);
+  return [pseudonym.value, '7.00', '9.00', decision ? decision.finalScore.toFixed(2) : '—', review.status === 'RESOLVED' ? `Đã xử lý · ${review.reason}` : review.reason];
+});
 const rubric = [
   {
-    question: "Câu 1",
-    points: 2,
-    criterion: "Nội dung kiến thức",
-    detail: "Xác định đúng vấn đề nghị luận",
+    question: mockData.questions[0].content,
+    points: mockData.criteria[0].maxScore,
+    criterion: mockData.criteria[0].label,
+    detail: mockData.criteria[0].description,
     scores: [
       "Nêu đúng vấn đề, triển khai rõ ràng và có lập luận thuyết phục.",
       "Nêu đúng vấn đề nhưng triển khai chưa đầy đủ.",
@@ -93,10 +69,10 @@ const rubric = [
     ],
   },
   {
-    question: "Câu 1",
-    points: 2,
-    criterion: "Kỹ năng phân tích và lập luận",
-    detail: "Lập luận, dẫn chứng",
+    question: mockData.questions[0].content,
+    points: mockData.criteria[1].maxScore,
+    criterion: mockData.criteria[1].label,
+    detail: mockData.criteria[1].description,
     scores: [
       "Phân tích sâu, dẫn chứng phù hợp và diễn đạt mạch lạc.",
       "Phân tích được các ý chính, có dẫn chứng.",
@@ -105,10 +81,10 @@ const rubric = [
     ],
   },
   {
-    question: "Câu 2",
-    points: 4,
-    criterion: "Nội dung kiến thức",
-    detail: "Các yếu tố hình thức và đặc trưng",
+    question: mockData.questions[1].content,
+    points: mockData.criteria[2].maxScore,
+    criterion: mockData.criteria[2].label,
+    detail: mockData.criteria[2].description,
     scores: [
       "Nêu đúng, đầy đủ các yếu tố; ví dụ phù hợp.",
       "Nêu được phần lớn yếu tố, còn một vài thiếu sót.",
@@ -117,10 +93,10 @@ const rubric = [
     ],
   },
   {
-    question: "Câu 3",
-    points: 4,
-    criterion: "Hình thức và ngôn ngữ",
-    detail: "Trình bày, diễn đạt",
+    question: mockData.questions[2].content,
+    points: mockData.criteria[3].maxScore,
+    criterion: mockData.criteria[3].label,
+    detail: mockData.criteria[3].description,
     scores: [
       "Bố cục rõ ràng, diễn đạt chính xác, không lỗi chính tả.",
       "Trình bày rõ, có ít lỗi nhỏ.",
@@ -162,7 +138,7 @@ function Header({ crumb, title, children }) {
     </header>
   );
 }
-function Info() {
+function Info({ exam }) {
   return (
     <div className="info">
       <div>
@@ -310,10 +286,10 @@ function CreateModal({ close }) {
 }
 function ExamCard({ item, open, council = false }) {
   return (
-    <button className="exam-card" onClick={open}>
+    <button className="exam-card" onClick={() => open(item.examId)}>
       <div className="card-top">
         <span className="cal">
-          15<small>THG 12</small>
+          {item.day}<small>{item.month}</small>
         </span>
         <div>
           <p className="exam-id">{item.id}</p>
@@ -378,8 +354,13 @@ function OfficeHome({ open, create }) {
     </>
   );
 }
-function OfficeExam({ back, finalize }) {
-  const [uploaded, setUploaded] = useState(false);
+function OfficeExam({ exam, back, finalize }) {
+  const [uploadedCandidates, setUploadedCandidates] = useState({});
+  const rows = studentRows(exam.examId).map((row) =>
+    uploadedCandidates[row[2]]
+      ? [row[0], row[1], row[2], 'Vừa tải lên', 'Đã nộp', row[5], row[6]]
+      : row,
+  );
   return (
     <>
       <Header crumb="PHÒNG KHẢO THÍ / KỲ THI" title={exam.name}>
@@ -404,23 +385,15 @@ function OfficeExam({ back, finalize }) {
             </i>
           </div>
         </div>
-        <Info />
+        <Info exam={exam} />
         <section className="table-box">
           <div className="section-head">
             <div>
               <h2>Danh sách thí sinh</h2>
               <p>
-                {exam.candidates} thí sinh · {exam.submitted} bài đã nộp
+                {exam.candidates} thí sinh · {exam.submitted} bài đã nộp · Chọn tệp PDF ở đúng dòng thí sinh
               </p>
             </div>
-            <label className="upload-btn">
-              ⇧ {uploaded ? "Đã tải bài thi" : "Tải bài thi lên"}
-              <input
-                type="file"
-                accept=".pdf"
-                onChange={() => setUploaded(true)}
-              />
-            </label>
           </div>
           <Table
             headers={[
@@ -431,10 +404,25 @@ function OfficeExam({ back, finalize }) {
               "Trạng thái xử lý",
               "Vấn đề",
               "Điểm",
+              "",
             ]}
-            rows={students}
+            rows={rows}
             statusAt={4}
             issueAt={5}
+            action={(row) => (
+              <label className="upload-btn">
+                ⇧ {uploadedCandidates[row[2]] ? "Đã tải" : "Tải bài thi"}
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={(event) => {
+                    if (event.target.files?.[0]) {
+                      setUploadedCandidates((current) => ({ ...current, [row[2]]: true }));
+                    }
+                  }}
+                />
+              </label>
+            )}
           />
         </section>
         <div className="actions bottom">
@@ -585,7 +573,8 @@ function Finalize({ back }) {
     </>
   );
 }
-function GraderHome({ open }) {
+function GraderHome({ exam, open }) {
+  const assignedCount = paperRows(exam.examId).length;
   return (
     <>
       <Header crumb="GIÁM KHẢO · BÀI ĐƯỢC PHÂN CÔNG" title="Kỳ thi cần chấm">
@@ -600,23 +589,23 @@ function GraderHome({ open }) {
           <div>
             <h2>Chào giám khảo Lê Hoàng</h2>
             <p>
-              Bạn có <b>04 bài làm</b> cần hoàn thành trong hôm nay.
+              Bạn có <b>{assignedCount} bài làm</b> được phân công trong kỳ thi này.
             </p>
           </div>
           <small>
-            Hạn gần nhất
+            Thời gian thi
             <br />
-            <b>16:30 · 15/12/2026</b>
+            <b>{exam.time}</b>
           </small>
         </div>
         <button className="assigned" onClick={open}>
           <div>
             <p className="exam-id">{exam.id}</p>
             <h2>{exam.name}</h2>
-            <p>{exam.subject} · Hạn chấm 16:30, 15/12/2026</p>
+            <p>{exam.subject} · Kỳ thi lúc {exam.time}</p>
           </div>
           <div>
-            <b>04</b>
+            <b>{assignedCount.toString().padStart(2, '0')}</b>
             <span>bài được giao</span>　→
           </div>
         </button>
@@ -624,7 +613,9 @@ function GraderHome({ open }) {
     </>
   );
 }
-function PaperList({ back, grade }) {
+function PaperList({ exam, back, grade }) {
+  const papers = paperRows(exam.examId);
+  const completedCount = papers.filter((row) => row[5] === 'Đã chấm').length;
   return (
     <>
       <Header crumb="GIÁM KHẢO / KỲ THI" title="Bài làm được phân công">
@@ -639,7 +630,7 @@ function PaperList({ back, grade }) {
             <h2>{exam.name}</h2>
             <p>{exam.subject} · Điểm tối đa 10</p>
           </div>
-          <div className="badge">01 / 04 hoàn thành</div>
+          <div className="badge">{completedCount.toString().padStart(2, '0')} / {papers.length.toString().padStart(2, '0')} hoàn thành</div>
         </div>
         <section className="table-box">
           <div className="section-head">
@@ -661,7 +652,7 @@ function PaperList({ back, grade }) {
               "Trạng thái",
               "",
             ]}
-            rows={papers}
+            rows={paperRows(exam.examId)}
             statusAt={5}
             action={(r) => (
               <Button className="link" onClick={grade}>
@@ -780,13 +771,13 @@ function Grading({ back, council = false }) {
                 <thead>
                   <tr>
                     <th>Câu</th>
+                    <th>Điểm</th>
                     <th>Tiêu chí</th>
                     <th>Thành phần nội dung</th>
                     <th>Mức 4</th>
                     <th>Mức 3</th>
                     <th>Mức 2</th>
                     <th>Mức 1</th>
-                    <th>Điểm</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -796,16 +787,6 @@ function Grading({ back, council = false }) {
                         <b>{item.question}</b>
                         <small>/ {item.points}đ</small>
                       </td>
-                      <td>
-                        <b>{item.criterion}</b>
-                      </td>
-                      <td>{item.detail}</td>
-                      {item.scores.map((text, index) => (
-                        <td key={text}>
-                          <b>{["Xuất sắc", "Tốt", "Đạt", "Chưa đạt"][index]}</b>
-                          <span>{text}</span>
-                        </td>
-                      ))}
                       <td>
                         <input
                           aria-label={`Điểm ${item.detail}`}
@@ -824,6 +805,16 @@ function Grading({ back, council = false }) {
                         />
                         <small>/ {item.points}</small>
                       </td>
+                      <td>
+                        <b>{item.criterion}</b>
+                      </td>
+                      <td>{item.detail}</td>
+                      {item.scores.map((text, index) => (
+                        <td key={text}>
+                          <b>{["Xuất sắc", "Tốt", "Đạt", "Chưa đạt"][index]}</b>
+                          <span>{text}</span>
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -874,6 +865,7 @@ function Grading({ back, council = false }) {
   );
 }
 function CouncilHome({ open }) {
+  const pendingReviewCount = exams.reduce((total, item) => total + item.issues, 0);
   return (
     <>
       <Header crumb="HỘI ĐỒNG CHẤM THI" title="Kỳ thi cần rà soát">
@@ -892,7 +884,7 @@ function CouncilHome({ open }) {
             </p>
           </div>
           <div className="review-count">
-            <b>09</b> bài cần xử lý
+            <b>{pendingReviewCount.toString().padStart(2, '0')}</b> bài cần xử lý
           </div>
         </div>
         <div className="exam-grid">
@@ -904,7 +896,8 @@ function CouncilHome({ open }) {
     </>
   );
 }
-function CouncilExam({ back, grade }) {
+function CouncilExam({ exam, back, grade }) {
+  const pendingReviewCount = exam.issues;
   return (
     <>
       <Header crumb="HỘI ĐỒNG / KỲ THI" title="Kết quả chấm & rà soát">
@@ -920,7 +913,7 @@ function CouncilExam({ back, grade }) {
             <p>{exam.subject} · Kết quả từ 02 giám khảo độc lập</p>
           </div>
           <div className="review-count">
-            <b>07</b> cần xử lý
+            <b>{pendingReviewCount.toString().padStart(2, '0')}</b> cần xử lý
           </div>
         </div>
         <section className="table-box">
@@ -942,7 +935,7 @@ function CouncilExam({ back, grade }) {
               "Kết quả / vấn đề",
               "",
             ]}
-            rows={reviews}
+            rows={reviewRows(exam.examId)}
             issueAt={4}
             action={(r) => (
               <Button className="link" onClick={grade}>
@@ -958,7 +951,13 @@ function CouncilExam({ back, grade }) {
 function App() {
   const [role, setRole] = useState("office"),
     [page, setPage] = useState("home"),
-    [creating, setCreating] = useState(false);
+    [creating, setCreating] = useState(false),
+    [selectedExamId, setSelectedExamId] = useState(exams[0].examId);
+  const selectedExam = exams.find((item) => item.examId === selectedExamId) ?? exams[0];
+  const openExam = (examId) => {
+    setSelectedExamId(examId);
+    setPage("exam");
+  };
   const change = (r) => {
     setRole(r);
     setPage("home");
@@ -968,22 +967,24 @@ function App() {
     role === "office" ? (
       page === "home" ? (
         <OfficeHome
-          open={() => setPage("exam")}
+          open={openExam}
           create={() => setCreating(true)}
         />
       ) : page === "final" ? (
         <Finalize back={() => setPage("exam")} />
       ) : (
         <OfficeExam
+          exam={selectedExam}
           back={() => setPage("home")}
           finalize={() => setPage("final")}
         />
       )
     ) : role === "grader" ? (
       page === "home" ? (
-        <GraderHome open={() => setPage("papers")} />
+        <GraderHome exam={selectedExam} open={() => setPage("papers")} />
       ) : page === "papers" ? (
         <PaperList
+          exam={selectedExam}
           back={() => setPage("home")}
           grade={() => setPage("grade")}
         />
@@ -991,9 +992,10 @@ function App() {
         <Grading back={() => setPage("papers")} />
       )
     ) : page === "home" ? (
-      <CouncilHome open={() => setPage("exam")} />
+      <CouncilHome open={openExam} />
     ) : page === "exam" ? (
       <CouncilExam
+        exam={selectedExam}
         back={() => setPage("home")}
         grade={() => setPage("grade")}
       />

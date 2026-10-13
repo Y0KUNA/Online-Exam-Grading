@@ -13,4 +13,4 @@ MinIO is private on the application network. Client uploads/downloads only use p
 
 ## Verification required before accepting S0
 
-Run AT-B02 and AT-N01…AT-N12 against the running Compose stack, including a 50 MiB POST and a Range GET. Record exact results in `docs/IMPLEMENTATION_PLAN.md`.
+Run AT-B02 and AT-N01…AT-N12 against the running Compose stack, including a 50 MiB POST and a Range GET. Record exact results in `../IMPLEMENTATION_PLAN.md`.

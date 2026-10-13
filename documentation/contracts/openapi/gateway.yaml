@@ -13,10 +13,9 @@ paths:
       summary: Public Identity JWKS route
       responses:
         '200': { description: JWKS }
-  /storage/original/{objectKey}:
-    parameters: [{ name: objectKey, in: path, required: true, schema: { type: string } }]
+  /storage/original:
     post:
-      summary: Presigned POST pass-through; authorization is enforced by MinIO policy.
+      summary: Presigned multipart POST pass-through; authorization is enforced by MinIO policy.
       responses:
         '204': { description: Object uploaded }
         '403': { description: Invalid or expired storage signature }

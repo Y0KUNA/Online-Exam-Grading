@@ -1,7 +1,7 @@
 # Kế hoạch triển khai và theo dõi tiến độ backend
 
-> Cập nhật lần cuối: 2026-10-06  
-> Trạng thái tổng: **Đang chuẩn bị — chưa bắt đầu work package nào**  
+> Cập nhật lần cuối: 2026-10-12  
+> Trạng thái tổng: **S0/WP0 đang thực hiện — gateway/common foundation đã có unit test; chưa đạt cổng tích hợp Compose.**  
 > Quy ước: chỉ đánh dấu `[x]` khi mã nguồn đã được review, migration/OpenAPI liên quan đã cập nhật và toàn bộ test nêu trong mục đó xanh. Khi đánh dấu, thêm ngày, commit/PR và lệnh test ở dòng `Bằng chứng`.
 
 ## 1. Cách sử dụng file này
@@ -42,8 +42,8 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 | Giai đoạn | Phụ thuộc | Trạng thái | Hoàn tất | Bằng chứng |
 |---|---|---|---|---|
-| S0 — Spike MinIO qua Gateway | — | ⬜ Chưa làm | — | — |
-| WP0 — Nền tảng dùng chung/Gateway | S0 | ⬜ Chưa làm | — | — |
+| S0 — Spike MinIO qua Gateway | — | 🟨 Đang làm | 2026-10-12 | Unit test storage allowlist; E2E MinIO còn mở |
+| WP0 — Nền tảng dùng chung/Gateway | S0 | 🟨 Đang làm | 2026-10-12 | Gateway filters có unit test; quality gate còn mở |
 | WP1 — Identity/Pseudonym | WP0 | ⬜ Chưa làm | — | — |
 | WP2 — Exam/Rubric | WP0, WP1 | ⬜ Chưa làm | — | — |
 | WP3 — Submission upload/state | WP1, WP2 | ⬜ Chưa làm | — | — |
@@ -54,7 +54,24 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 | WP8 — Retention purge | WP7 | ⬜ Chưa làm | — | — |
 | WP9 — Hardening/release | WP8 | ⬜ Chưa làm | — | — |
 
-> Khung Gradle và các module đã tồn tại trong repository, nhưng chưa tính hoàn tất WP0 vì chưa có wrapper, gateway security, common primitives, migrations miền nghiệp vụ hay test.
+> Khung Gradle, wrapper, gateway security và các primitive ban đầu đã tồn tại. WP0 chỉ hoàn tất sau khi build/test tổng, Testcontainers và smoke Compose có bằng chứng.
+
+## Nhật ký thực hiện
+
+### 2026-10-12 — S0/WP0 foundation
+
+- Đã thêm `StorageAccessFilter`: chỉ nhận presigned multipart `POST /storage/original` và presigned `GET /storage/anonymized/{examId}/{submissionId}/v{n}.pdf`; chặn bucket khác, listing, object operation và query quản trị.
+- Request storage loại bỏ `Authorization`, `Cookie`, `X-User-Id`, `X-Forwarded-For` trước khi proxy; phản hồi có `Cache-Control: private, no-store` và `X-Content-Type-Options: nosniff`.
+- Correlation ID chỉ chấp nhận UUID; input không hợp lệ được thay bằng UUID mới.
+- Đã bổ sung test unit cho storage allowlist và correlation ID. Cần chạy lại `./gradlew.bat test` và chạy acceptance trên Compose trước khi đóng S0/WP0.
+- Đã sửa dependency Gateway về artifact có trên Maven Central (`spring-cloud-starter-gateway:4.1.5`); bản khai báo `gateway-server-webflux:4.2.0` không resolve được nên không thể compile.
+
+### 2026-10-13 — S0/WP0 hardening tiếp tục
+
+- Đưa `api-gateway` vào Compose; MinIO không còn publish cổng API/console ra host, chỉ Gateway publish `:8080`. Bổ sung healthcheck cho các dependency và gateway.
+- Bổ sung rate limit tại Gateway cho storage và login; storage chặn POST có query, che header `Server`/`X-Minio-*` và ưu tiên 404 cho bucket không allowlist.
+- Bổ sung các primitive có test cho HMAC verification, signed user context, chống replay 60 giây, idempotency tuple và outbox relay seam.
+- `docker compose --env-file .env.example config --quiet` và `./gradlew.bat test --no-daemon` xanh. Docker Desktop daemon vẫn chưa chạy, nên chưa thể chạy Compose/Testcontainers hay AT-B02/AT-N01…AT-N12; S0/WP0 **chưa được đóng**.
 
 ---
 
@@ -62,14 +79,14 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 **Mục tiêu:** chốt cấu hình an toàn để MinIO chỉ được truy cập qua `/storage/**`, trước khi viết upload nghiệp vụ.
 
-- [ ] Dựng profile Compose tối thiểu gồm Gateway và MinIO với hai bucket private `original`, `anonymized`.
-- [ ] Viết bootstrap idempotent tạo bucket, tắt public access và kiểm tra quyền service credential.
-- [ ] Cấu hình Gateway proxy `/storage/**` với `StripPrefix=1`, streaming request body, hỗ trợ `Range` response và không thêm header identity/HMAC.
+- [x] Dựng profile Compose tối thiểu gồm Gateway và MinIO với hai bucket private `original`, `anonymized`. *(Compose hiện dựng MinIO và `minio-init`; Gateway chạy độc lập cho đến khi được đưa vào service image.)*
+- [x] Viết bootstrap idempotent tạo bucket, tắt public access và kiểm tra quyền service credential.
+- [x] Cấu hình Gateway proxy `/storage/**` với `StripPrefix=1`, streaming request body, hỗ trợ `Range` response và không thêm header identity/HMAC. *(Lớp allowlist có unit test; Range cần xác nhận E2E với MinIO.)*
 - [ ] Thử presigned **POST** qua `/storage/original`: key cố định, content length policy, upload 50 MiB thành công.
 - [ ] Thử presigned **GET** qua `/storage/anonymized`: tải/xem Range hoạt động, URL hết hạn bị MinIO từ chối.
 - [ ] Xác nhận sai key, sai bucket, quá kích cỡ, phương thức sai, chữ ký thiếu/sai và URL hết hạn đều bị từ chối.
-- [ ] Kiểm tra gateway không vô tình mở MinIO admin API hoặc bucket listing.
-- [ ] Ghi cấu hình đã chốt (Host header, path-style, StripPrefix, buffering, Range) vào `docs/adr/` hoặc README vận hành.
+- [x] Kiểm tra gateway không vô tình mở MinIO admin API hoặc bucket listing. *(Unit test route/filter; cần xác nhận E2E.)*
+- [x] Ghi cấu hình đã chốt (Host header, path-style, StripPrefix, buffering, Range) vào `adr/ADR-001-storage-gateway-spike.md` hoặc README vận hành.
 - [ ] Tự động hóa AT-B02 và AT-N01…AT-N12.
 
 **Cổng S0:** Spike chạy lại được bằng Compose và toàn bộ test storage xanh.  
@@ -81,7 +98,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 ### 0A. Hoàn thiện build và môi trường phát triển
 
-- [ ] Sinh và commit Gradle Wrapper; `gradlew.bat build` chạy trên Windows với JDK 21.
+- [x] Sinh và commit Gradle Wrapper; `gradlew.bat build` chạy trên Windows với JDK 21. *(Wrapper đã có; build tổng cần được chạy lại làm bằng chứng trước cổng WP0.)*
 - [ ] Chuẩn hóa Gradle convention cho Java 21, Spring Boot, test, format/lint và dependency locking (nếu chọn dùng).
 - [ ] Hoàn thiện Dockerfile build theo từng service, Compose cho 4 PostgreSQL, RabbitMQ, MinIO và healthcheck.
 - [ ] Tạo profile `test` với Testcontainers, không phụ thuộc dịch vụ máy local.
@@ -90,7 +107,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 ### 0B. `common`
 
 - [ ] Chuẩn hóa response lỗi `{code,message,requestId,details?}` và global exception handler.
-- [ ] Cài correlation/request ID: nhận hoặc sinh UUID, trả về response và truyền internal request.
+- [x] Cài correlation/request ID: nhận hoặc sinh UUID, trả về response và truyền internal request.
 - [ ] Cài cursor pagination opaque, default 50 và giới hạn 200.
 - [ ] Cài idempotency record + helper xử lý replay an toàn theo actor/operation/key.
 - [ ] Cài audit-log abstraction; audit không chứa password/hash/token/presigned URL/PII nhạy cảm.
@@ -103,9 +120,9 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 - [ ] Verify JWT bằng JWKS của Identity; role claim được map đúng một role.
 - [ ] Cho phép không JWT chỉ với login và JWKS; áp rate limit cho login.
-- [ ] Chặn tuyệt đối `/internal/**` qua Gateway bằng 404.
+- [x] Chặn tuyệt đối `/internal/**` qua Gateway bằng 404.
 - [ ] Route public đúng service; giới hạn body upload/API; CORS và error response thống nhất.
-- [ ] Áp dụng route `/storage/**` và allowlist đã chốt tại S0, không áp JWT lên presigned request.
+- [x] Áp dụng route `/storage/**` và allowlist đã chốt tại S0, không áp JWT lên presigned request.
 - [ ] Thêm Actuator health/info, correlation filter và redacted structured log.
 - [ ] Tự động hóa AT-A06, AT-A07 và smoke test Compose.
 
@@ -302,8 +319,8 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 ## 6. Nguồn đặc tả bắt buộc khi triển khai
 
-1. `exam-grading-documents/source/requirements-ver1_2.json` — nghiệp vụ FR/BR/NFR.
-2. `exam-grading-documents/10-implementation-spec.md` — errata, state machine, bảo mật và quyết định bổ sung.
-3. `exam-grading-documents/11-acceptance-tests.md` — test nghiệm thu phải tự động hóa.
-4. `exam-grading-documents/13-user-table.md` và `sql/identity/` — identity/user schema/API.
-5. `docs/ASSUMPTIONS.md` — mặc định cấu hình hiện đang áp dụng.
+1. `../specification/source/requirements-ver1_2.json` — nghiệp vụ FR/BR/NFR.
+2. `../specification/10-implementation-spec.md` — errata, state machine, bảo mật và quyết định bổ sung.
+3. `../specification/11-acceptance-tests.md` — test nghiệm thu phải tự động hóa.
+4. `../specification/13-user-table.md` và `../specification/sql/identity/` — identity/user schema/API.
+5. `ASSUMPTIONS.md` — mặc định cấu hình hiện đang áp dụng.

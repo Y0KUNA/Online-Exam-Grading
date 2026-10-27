@@ -163,7 +163,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 - [ ] [v] `POST /auth/login`, `/users/me`, đổi password với lỗi đăng nhập không làm lộ account tồn tại. *(Đã triển khai endpoint và response `INVALID_CREDENTIALS` đồng nhất; chưa nghiệm thu.)*
 - [ ] CRUD quản trị user; cấm đổi role, cấm vô hiệu hóa EO hoạt động cuối cùng.
 - [ ] Profile grader; chỉ tạo profile khi role GRADER.
-- [ ] Import roster CSV/XLSX: lưu dòng hợp lệ, trả lỗi từng dòng, unique candidate number theo exam.
+- [ ] [v] Import roster CSV/XLSX: lưu dòng hợp lệ, trả lỗi từng dòng, unique candidate number theo exam. *(2026-10-27: candidate schema và JSON roster import từng dòng đã có; adapter CSV/XLSX chưa hoàn thiện.)*
 - [ ] Candidate search phân trang chỉ cho EXAM_OFFICE.
 - [ ] `submission-bindings`: kiểm candidate thuộc exam, một binding ACTIVE/candidate, idempotent và endpoint release/purge.
 - [ ] Pseudonym 8 ký tự CSPRNG; unique `(exam,value)`, retry tối đa 5, lịch sử khi đổi và lookup theo lô.
@@ -182,7 +182,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 ## WP2 — Exam, rubric và registry giám khảo
 
 - [ ] Tạo schema Flyway: Exam, Question, Criterion, Rubric version, `exam_grader`, audit/idempotency.
-- [ ] API tạo/sửa exam; enforce scale, threshold, grader count và trạng thái DRAFT/ACTIVE/CLOSED.
+- [ ] [v] API tạo/sửa exam; enforce scale, threshold, grader count và trạng thái DRAFT/ACTIVE/CLOSED. *(2026-10-27: create exam, thêm question/rubric/activate rubric đã có; edit/activate exam và validation tổng điểm còn thiếu.)*
 - [ ] API câu hỏi/criteria; validate tổng điểm câu bằng scale và tổng criteria bằng max score.
 - [ ] Rubric manual versioned; activate chỉ sau `confirmed=true`, chỉ một bản ACTIVE.
 - [ ] Import DOCX bằng Apache POI: giữ rows/cells/rowspan/colspan; từ chối nested/merge không hỗ trợ; chỉ gợi ý regex, không auto-active.
@@ -211,7 +211,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 - [ ] Complete upload: HEAD object, kiểm kích thước, idempotent, enqueue VALIDATE qua outbox.
 - [ ] Cấp URL ORIGINAL/ANONYMIZED chỉ cho EXAM_OFFICE public API; GRADER/COUNCIL nhận URL bằng internal projection sau này.
 - [ ] Scheduler chuyển upload bỏ dở thành `FAILED/UPLOAD_ABANDONED`; dọn object mồ côi an toàn/idempotent.
-- [ ] Internal status API có expected status/version và service signature.
+- [ ] [v] Internal status API có expected status/version và service signature. *(2026-10-27: đã có `/internal/v1/submissions/{id}/status`, chỉ chấp nhận caller allowlist + HMAC/timestamp; state-machine T01–T20 subset ghi `submission_event`. Chưa có test contract/replay guard nên chưa đóng.)*
 - [ ] Replace file: chỉ guard đúng Review/FAILED, giữ pseudonym, tạo ORIGINAL version mới bất biến, chặn nếu CONFIRMED attempt.
 
 ### 3C. Kiểm thử
@@ -226,7 +226,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 ## WP4 — PDF validation và anonymization worker
 
-- [ ] Khai báo exchange `submission.processing`, 2 queue durable `validate`/`anonymize`, retry 30s→2m→10m và DLQ tách riêng.
+- [ ] [v] Khai báo exchange `submission.processing`, 2 queue durable `validate`/`anonymize`, retry 30s→2m→10m và DLQ tách riêng. *(2026-10-27: exchange/queue durable và DLQ tách riêng đã có; worker/backoff chưa hoàn chỉnh.)*
 - [ ] Validate schema message/version; message validate không có pseudonym, message anonymize không có candidate PII.
 - [ ] Worker VALIDATE: download an toàn, MIME/PDF/page count/dimension/checksum, giới hạn pixel/thời gian, tạo pseudonym sau validate hợp lệ.
 - [ ] Worker ANONYMIZE: rasterize trang 1, mask white lossless, chỉ render phách mới, xóa metadata/annotation/attachment; không chỉ phủ rectangle PDF.
@@ -243,7 +243,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 ## WP5 — Assignment, attempt và grading
 
-- [ ] Tạo schema assignment/attempt/question score và index/unique constraint cần thiết.
+- [ ] [v] Tạo schema assignment/attempt/question score và index/unique constraint cần thiết. *(2026-10-27: Flyway V2 đã thêm bảng và unique assignment.)*
 - [ ] Bulk assignment: exam ACTIVE, giám khảo registry active, cross-grading đúng `graderCount`, xử lý từng bài/rejected và round-robin khi cross tắt.
 - [ ] Single review assignment: chỉ khi Review `ACTION_AUTHORIZED` hợp lệ.
 - [ ] Danh sách assignment chỉ của GRADER sở hữu; dùng pseudonym lookup, không trả identity.
@@ -260,7 +260,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 ## WP6 — Evaluate, review và quyết định Hội đồng
 
-- [ ] Tạo schema Review, review note, CouncilDecision, optimistic version và partial unique index cho tối đa một review OPEN/ACTION_AUTHORIZED/submission.
+- [ ] [v] Tạo schema Review, review note, CouncilDecision, optimistic version và partial unique index cho tối đa một review OPEN/ACTION_AUTHORIZED/submission. *(2026-10-27: Flyway V2 đã thêm schema/index; API quyết định Council đã có, còn workflow evaluate/reconcile.)*
 - [ ] Nhận attempt confirmed idempotently; evaluate single/cross grading, pairwise threshold và HALF_UP scale 2.
 - [ ] Tạo `SCORE_DIFFERENCE` khi cần; bỏ qua evaluate khi review chưa đóng và reconcile lại sau đóng.
 - [ ] GRADER flag chỉ cho assignment của mình; gộp flag vào review đang mở thay vì tạo review thứ hai.
@@ -278,7 +278,7 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 
 ## WP7 — Finalize, remark và export
 
-- [ ] Tạo schema FinalResult versioned (`version`, `is_current`), retention hold và snapshot core identity/exam.
+- [ ] [v] Tạo schema FinalResult versioned (`version`, `is_current`), retention hold và snapshot core identity/exam. *(2026-10-27: Flyway V2; hiện đã có projection/export CSV read-only.)*
 - [ ] Implement finalize saga idempotent: điều kiện completed/no open review/đủ grading; retry/reconcile lỗi giữa service.
 - [ ] Chỉ set `finalized_at` và `retention_deadline` ở lần finalized đầu; version sau remark sao chép deadline, không gia hạn.
 - [ ] Remark sau FINALIZED trong retention window; withdraw; regrade flow và tạo result version mới.
@@ -325,6 +325,9 @@ S0 (spike storage) → WP0 (nền tảng) → WP1 (identity) ─┐
 | Ngày | Hạng mục đánh dấu | Commit/PR | Test/lệnh đã chạy | Ghi chú |
 |---|---|---|---|---|
 | — | — | — | — | — |
+| 2026-10-27 | WP3/WP4/WP5/WP6/WP7 foundation | Chưa commit | Không chạy theo yêu cầu | Thêm state-machine nội bộ ký HMAC, RabbitMQ topology, migration lõi, review decision, result projection/export và frontend Gateway client; chưa đủ acceptance để đóng WP. |
+| 2026-10-27 | Frontend manual API setup | Chưa commit | Không chạy theo yêu cầu | Thêm login JWT và UI tạo kỳ thi/câu hỏi/rubric/import roster để kiểm thử qua Gateway. |
+| 2026-10-27 | Gateway CORS preflight | Chưa commit | Không chạy theo yêu cầu | Cho phép riêng `OPTIONS /**`; sửa lỗi preflight login bị 401, không nới quyền POST login ngoài cấu hình cũ. |
 
 ## 5. Nhật ký quyết định, blocker và sai khác
 

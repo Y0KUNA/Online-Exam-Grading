@@ -19,7 +19,7 @@ Base `/api/v1`; JSON UTF-8 trừ upload/export/SSE. UUID là string UUID; dateti
 Internal `GET /internal/v1/exams/{examId}/core` (Result/Review, v1.2): response 200 `{examId:uuid,name:string,subject:string}`, dùng để ghi FinalResult. Internal `GET /internal/v1/exams/{examId}/scale` (Result/Review, v1.2): response 200 `{examId:uuid,scale:number}`, dùng để kiểm điểm của Hội đồng nằm trong [0, scale]. 404 NOT_FOUND cho cả hai.
 
 ## Identity/Pseudonym APIs
-`POST /api/v1/exams/{examId}/candidates/import` multipart `file:CSV|XLSX` (EXAM_OFFICE, FR-005): response 200 `{inserted:int,rejected:int,errors:[{row:int,code:string,message:string}]}`; 409 DUPLICATE_CANDIDATE_NUMBER.
+`POST /api/v1/exams/{examId}/candidates/import` multipart `file:CSV` (EXAM_OFFICE, FR-005): CSV header requires `candidateNumber,fullName` and accepts optional `className`; response 200 `{inserted:int,rejected:int,errors:[{row:int,code:string,message:string}]}`. Duplicate candidate numbers are returned as row errors.
 
 `GET /api/v1/exams/{examId}/candidates?query=...` (EXAM_OFFICE): response 200 `{items:[{candidateId:uuid,candidateNumber:string,fullName:string,className?:string}]}`. Endpoint này không cho GRADER/COUNCIL.
 

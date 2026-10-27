@@ -1,0 +1,1 @@
+CREATE TABLE rubric (rubric_id uuid PRIMARY KEY, exam_id uuid NOT NULL REFERENCES exam(exam_id) ON DELETE CASCADE, content jsonb NOT NULL, status varchar(16) NOT NULL DEFAULT 'DRAFT', version integer NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now());

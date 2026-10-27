@@ -1,0 +1,1 @@
+CREATE TABLE candidate (candidate_id uuid PRIMARY KEY, exam_id uuid NOT NULL, candidate_number varchar(80) NOT NULL, full_name varchar(255) NOT NULL, class_name varchar(120), created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(exam_id,candidate_number));

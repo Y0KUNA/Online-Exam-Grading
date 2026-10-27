@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import "./rubric.css";
 import { mockData } from "./mockData";
+import { gradingApi } from "./api";
 
 const formatDateTime = (value) =>
   new Intl.DateTimeFormat('vi-VN', {
@@ -24,7 +25,7 @@ const getExamSummary = (examId) => {
     issues: mockData.reviews.filter((item) => item.examId === examId && item.status !== 'RESOLVED').length,
   };
 };
-const exams = mockData.exams.map((item) => ({
+const getExams = () => mockData.exams.map((item) => ({
   ...item,
   id: item.examCode,
   time: formatDateTime(item.examTime),
@@ -48,12 +49,12 @@ const paperRows = (examId) => mockData.submissions.filter((submission) => submis
   const scores = attempt ? mockData.questionScores.filter((item) => item.attemptId === attempt.attemptId) : [];
   const byQuestion = (questionId) => scores.find((item) => item.questionId === questionId)?.score?.toFixed(2) ?? '—';
   const total = scores.length ? scores.reduce((sum, item) => sum + item.score, 0).toFixed(2) : '—';
-  return [pseudonym.value, byQuestion(mockData.questions[0].questionId), byQuestion(mockData.questions[1].questionId), byQuestion(mockData.questions[2].questionId), total, assignment?.status === 'IN_PROGRESS' ? 'Đang chấm' : submissionStatusLabel[submission.status]];
+  return [pseudonym?.value ?? '—', byQuestion(mockData.questions[0].questionId), byQuestion(mockData.questions[1].questionId), byQuestion(mockData.questions[2].questionId), total, assignment?.status === 'IN_PROGRESS' ? 'Đang chấm' : submissionStatusLabel[submission.status]];
 });
 const reviewRows = (examId) => mockData.reviews.filter((review) => review.examId === examId).map((review) => {
   const pseudonym = mockData.pseudonyms.find((item) => item.submissionId === review.submissionId);
   const decision = mockData.councilDecisions.find((item) => item.reviewId === review.reviewId);
-  return [pseudonym.value, '7.00', '9.00', decision ? decision.finalScore.toFixed(2) : '—', review.status === 'RESOLVED' ? `Đã xử lý · ${review.reason}` : review.reason];
+  return [pseudonym?.value ?? '—', '7.00', '9.00', decision ? decision.finalScore.toFixed(2) : '—', review.status === 'RESOLVED' ? `Đã xử lý · ${review.reason}` : review.reason];
 });
 const rubric = [
   {
@@ -176,9 +177,22 @@ function Modal({ title, close, children }) {
     </div>
   );
 }
-function CreateModal({ close }) {
+function Login({ onLogin }) {
+  const [error, setError] = useState(""); const [loading, setLoading] = useState(false);
+  const submit = async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); setLoading(true); setError(""); try { await onLogin({ username: form.get("username"), password: form.get("password") }); } catch (cause) { setError(cause.message); } finally { setLoading(false); } };
+  return <div className="overlay"><div className="modal"><div className="modal-head"><div><p className="crumb">EXAMGRADER</p><h2>Đăng nhập để kiểm thử API</h2></div></div><form className="form" onSubmit={submit}><div className="form-grid"><label>Tên đăng nhập<input name="username" required autoFocus /></label><label>Mật khẩu<input name="password" required type="password" /></label></div>{error && <p className="form-error">{error}</p>}<div className="actions"><Button type="submit" disabled={loading}>{loading ? "Đang đăng nhập…" : "Đăng nhập"}</Button></div></form></div></div>;
+}
+function SetupExam({ examId, close, refresh }) {
+  const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const action = async (work, ok) => { setError(""); try { await work(); setMessage(ok); refresh(); } catch (cause) { setError(cause.message); } };
+  return <Modal title="Thiết lập kỳ thi" close={close}><div className="form"><section><b>Thêm câu hỏi</b><form className="form-grid compact" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(()=>gradingApi.addQuestion(examId,{orderNo:Number(f.get("orderNo")),content:f.get("content"),maxScore:Number(f.get("maxScore")),required:true}),"Đã thêm câu hỏi");}}><label>Thứ tự<input name="orderNo" type="number" min="1" required /></label><label>Nội dung<input name="content" required /></label><label>Điểm tối đa<input name="maxScore" type="number" min="0" step=".25" required /></label><div className="actions"><Button type="submit">Lưu câu hỏi</Button></div></form></section><section><b>Tạo rubric</b><form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(async()=>{const created=await gradingApi.createRubric(examId,JSON.parse(f.get("content")));await gradingApi.activateRubric(examId,created.rubricId);},"Đã tạo và kích hoạt rubric");}}><label className="feedback">Nội dung JSON<textarea name="content" defaultValue={'{"instructions":"Chấm theo đáp án đã phê duyệt"}'} /></label><div className="actions"><Button type="submit">Lưu rubric</Button></div></form></section><section><b>Import danh sách thí sinh (CSV)</b><form onSubmit={(e)=>{e.preventDefault();const file=new FormData(e.currentTarget).get("file");if(!(file instanceof File)||file.size===0){setError("Hãy chọn tệp CSV trước khi import.");return;}action(async()=>{const result=await gradingApi.importRoster(examId,file);return result;},"Đã import roster");}}><label className="upload">⇧ <b>Chọn tệp CSV</b><input name="file" type="file" accept=".csv,text/csv" required /></label><small>Header bắt buộc: candidateNumber, fullName; tùy chọn: className.</small><div className="actions"><Button type="submit">Import danh sách</Button></div></form></section>{message&&<p className="success">{message}</p>}{error&&<p className="form-error">{error}</p>}</div></Modal>;
+}
+function CreateModal({ close, onCreated }) {
   const [cross, setCross] = useState(true);
   const [done, setDone] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [rosterResult, setRosterResult] = useState(null);
   if (done)
     return (
       <Modal title="Tạo kỳ thi mới" close={close}>
@@ -186,8 +200,7 @@ function CreateModal({ close }) {
           <b>✓</b>
           <h3>Đã tạo kỳ thi</h3>
           <p>
-            Kỳ thi đang ở trạng thái nháp. Bạn có thể bổ sung danh sách thí sinh
-            và cấu hình trước khi kích hoạt.
+            Kỳ thi đang ở trạng thái nháp. {rosterResult ? `Đã import ${rosterResult.inserted} thí sinh${rosterResult.rejected ? `, ${rosterResult.rejected} dòng chưa hợp lệ` : ""}.` : "Bạn có thể bổ sung danh sách thí sinh và cấu hình trước khi kích hoạt."}
           </p>
           <Button onClick={close}>Hoàn tất</Button>
         </div>
@@ -197,24 +210,31 @@ function CreateModal({ close }) {
     <Modal title="Tạo kỳ thi mới" close={close}>
       <form
         className="form"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          setDone(true);
+          const form = new FormData(e.currentTarget);
+          setSaving(true); setError("");
+          try {
+            const rosterFile = form.get("rosterFile");
+            const result = await onCreated({ name: form.get("name"), subject: form.get("subject"), examTime: form.get("examTime"), gradeLevel: form.get("gradeLevel"), crossGradingEnabled: cross, graderCount: cross ? Number(form.get("graderCount")) : 1, differenceThreshold: cross ? Number(form.get("differenceThreshold")) : 0 }, rosterFile instanceof File && rosterFile.size > 0 ? rosterFile : null);
+            setRosterResult(result);
+            setDone(true);
+          } catch (cause) { setError(cause.message); } finally { setSaving(false); }
         }}
       >
         <div className="form-grid">
           <label>
             Tên kỳ thi *
-            <input required placeholder="Ví dụ: Thi kết thúc học phần" />
+            <input name="name" required placeholder="Ví dụ: Thi kết thúc học phần" />
           </label>
           <label>
-            Môn thi *<input required placeholder="Chọn hoặc nhập môn thi" />
+            Môn thi *<input name="subject" required placeholder="Chọn hoặc nhập môn thi" />
           </label>
           <label>
-            Thời gian thi *<input required type="datetime-local" />
+            Thời gian thi *<input name="examTime" required type="datetime-local" />
           </label>
           <label>
-            Khối / Lớp *<input required placeholder="Ví dụ: K66 · Lớp 01–08" />
+            Khối / Lớp *<input name="gradeLevel" required placeholder="Ví dụ: K66 · Lớp 01–08" />
           </label>
         </div>
         <section>
@@ -245,14 +265,14 @@ function CreateModal({ close }) {
             <div className="form-grid compact">
               <label>
                 Số lượng giám khảo
-                <select defaultValue="2">
+                <select name="graderCount" defaultValue="2">
                   <option>2</option>
                   <option>3</option>
                 </select>
               </label>
               <label>
                 Ngưỡng chênh lệch điểm
-                <input type="number" defaultValue="1.00" step=".25" />
+                <input name="differenceThreshold" type="number" defaultValue="1.00" step=".25" />
               </label>
             </div>
           )}
@@ -268,17 +288,19 @@ function CreateModal({ close }) {
               <option>Template-TL-2026 · 4 trang</option>
             </select>
           </label>
-          <label>
-            Danh sách thí sinh (CSV, XLSX)
-            <span className="file">⇧ Import roster</span>
-            <input type="file" accept=".csv,.xlsx" />
-          </label>
+          <div style={{ fontSize: "11px", fontWeight: 750 }}>
+            Danh sách thí sinh (CSV)
+            <label className="file" htmlFor="rosterFile">⇧ Import roster</label>
+            <input id="rosterFile" name="rosterFile" type="file" accept=".csv,text/csv" />
+            <small>Header: candidateNumber, fullName, className (tùy chọn)</small>
+          </div>
         </section>
         <div className="actions">
+          {error && <p className="form-error">{error}</p>}
           <Button className="secondary" onClick={close}>
             Hủy
           </Button>
-          <Button type="submit">Tạo kỳ thi</Button>
+          <Button type="submit" disabled={saving}>{saving ? "Đang tạo…" : "Tạo kỳ thi"}</Button>
         </div>
       </form>
     </Modal>
@@ -329,7 +351,7 @@ function ExamCard({ item, open, council = false }) {
     </button>
   );
 }
-function OfficeHome({ open, create }) {
+function OfficeHome({ open, create, exams }) {
   return (
     <>
       <Header crumb="PHÒNG KHẢO THÍ · TỔNG QUAN" title="Kỳ thi của bạn">
@@ -354,9 +376,24 @@ function OfficeHome({ open, create }) {
     </>
   );
 }
-function OfficeExam({ exam, back, finalize }) {
+function OfficeExam({ exam, back, finalize, exportResults, configure, revision }) {
   const [uploadedCandidates, setUploadedCandidates] = useState({});
-  const rows = studentRows(exam.examId).map((row) =>
+  const [candidates, setCandidates] = useState([]);
+  const [candidateError, setCandidateError] = useState("");
+  const [candidatesLoading, setCandidatesLoading] = useState(true);
+  useEffect(() => {
+    const aborter = new AbortController();
+    setCandidatesLoading(true); setCandidateError("");
+    gradingApi.listCandidates(exam.examId, { signal: aborter.signal })
+      .then((payload) => setCandidates(Array.isArray(payload) ? payload : payload.items ?? []))
+      .catch((cause) => { if (cause.name !== "AbortError") { setCandidates([]); setCandidateError(cause.message); } })
+      .finally(() => { if (!aborter.signal.aborted) setCandidatesLoading(false); });
+    return () => aborter.abort();
+  }, [exam.examId, revision]);
+  const rows = candidates.map((candidate) => {
+    const mockRow = studentRows(exam.examId).find((row) => row[2] === candidate.candidateNumber);
+    return mockRow ?? ['—', candidate.fullName, candidate.candidateNumber, '—', 'Chưa upload bài', '—', '—'];
+  }).map((row) =>
     uploadedCandidates[row[2]]
       ? [row[0], row[1], row[2], 'Vừa tải lên', 'Đã nộp', row[5], row[6]]
       : row,
@@ -368,6 +405,7 @@ function OfficeExam({ exam, back, finalize }) {
           ← Danh sách kỳ thi
         </Button>
         <Button onClick={finalize}>Chốt điểm</Button>
+        <Button className="secondary" onClick={configure}>Thiết lập</Button>
       </Header>
       <main className="content">
         <div className="detail">
@@ -391,10 +429,11 @@ function OfficeExam({ exam, back, finalize }) {
             <div>
               <h2>Danh sách thí sinh</h2>
               <p>
-                {exam.candidates} thí sinh · {exam.submitted} bài đã nộp · Chọn tệp PDF ở đúng dòng thí sinh
+                {candidatesLoading ? 'Đang tải danh sách thí sinh…' : `${candidates.length} thí sinh · ${exam.submitted} bài đã nộp`} · Chọn tệp PDF ở đúng dòng thí sinh
               </p>
             </div>
           </div>
+          {candidateError && <p className="form-error">Không thể tải danh sách thí sinh: {candidateError}</p>}
           <Table
             headers={[
               "Số phách",
@@ -428,7 +467,7 @@ function OfficeExam({ exam, back, finalize }) {
         <div className="actions bottom">
           <Button
             className="secondary"
-            onClick={() => alert("Đã tạo tệp kết quả mẫu (.xlsx)")}
+            onClick={() => exportResults(exam.examId)}
           >
             ⇩ Xuất kết quả kỳ thi
           </Button>
@@ -864,7 +903,7 @@ function Grading({ back, council = false }) {
     </>
   );
 }
-function CouncilHome({ open }) {
+function CouncilHome({ open, exams }) {
   const pendingReviewCount = exams.reduce((total, item) => total + item.issues, 0);
   return (
     <>
@@ -952,8 +991,52 @@ function App() {
   const [role, setRole] = useState("office"),
     [page, setPage] = useState("home"),
     [creating, setCreating] = useState(false),
-    [selectedExamId, setSelectedExamId] = useState(exams[0].examId);
+    [selectedExamId, setSelectedExamId] = useState(mockData.exams[0]?.examId),
+    [apiError, setApiError] = useState(""),
+    [loading, setLoading] = useState(true),
+    [revision, setRevision] = useState(0),
+    [authToken, setAuthToken] = useState(() => sessionStorage.getItem("exam-grading.access-token")),
+    [configuring, setConfiguring] = useState(false);
+  const exams = useMemo(getExams, [revision]);
   const selectedExam = exams.find((item) => item.examId === selectedExamId) ?? exams[0];
+  useEffect(() => {
+    const aborter = new AbortController();
+    gradingApi.listExams({ signal: aborter.signal })
+      .then((payload) => {
+        const items = Array.isArray(payload) ? payload : payload.items ?? payload.content ?? [];
+        if (items.length) { mockData.exams = items; setSelectedExamId((current) => current ?? items[0].examId); setRevision((value) => value + 1); }
+        setApiError("");
+      })
+      .catch((cause) => { if (cause.name !== "AbortError") setApiError("Không thể tải dữ liệu máy chủ; đang hiển thị dữ liệu minh họa."); })
+      .finally(() => setLoading(false));
+    return () => aborter.abort();
+  }, [authToken]);
+  const login = async (credentials) => { const response = await gradingApi.login(credentials); sessionStorage.setItem("exam-grading.access-token", response.accessToken); setAuthToken(response.accessToken); const role = JSON.parse(atob(response.accessToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))).role; setRole(role === "EXAM_OFFICE" ? "office" : role === "GRADER" ? "grader" : "council"); };
+  const createExam = async (form, rosterFile) => {
+    const created = await gradingApi.createExam(form);
+    mockData.exams = [created, ...mockData.exams];
+    setSelectedExamId(created.examId); setRevision((value) => value + 1);
+    return rosterFile ? gradingApi.importRoster(created.examId, rosterFile) : null;
+  };
+  const exportResults = async (examId) => {
+    try {
+      const file = await gradingApi.exportResults(examId);
+      const url = URL.createObjectURL(file); const link = document.createElement("a");
+      link.href = url; link.download = `ket-qua-${examId}.csv`; link.click(); URL.revokeObjectURL(url);
+    } catch (cause) { setApiError(cause.message); }
+  };
+  useEffect(() => {
+    if (!selectedExamId) return undefined;
+    const aborter = new AbortController();
+    Promise.all([gradingApi.listSubmissions(selectedExamId, { signal: aborter.signal }), gradingApi.listReviews(selectedExamId, { signal: aborter.signal })])
+      .then(([submissions, reviews]) => {
+        mockData.submissions = Array.isArray(submissions) ? submissions : submissions.items ?? [];
+        mockData.reviews = Array.isArray(reviews) ? reviews : reviews.items ?? [];
+        setRevision((value) => value + 1);
+      })
+      .catch((cause) => { if (cause.name !== "AbortError") setApiError("Một số dữ liệu chi tiết chưa tải được từ API."); });
+    return () => aborter.abort();
+  }, [selectedExamId]);
   const openExam = (examId) => {
     setSelectedExamId(examId);
     setPage("exam");
@@ -966,7 +1049,7 @@ function App() {
   let view =
     role === "office" ? (
       page === "home" ? (
-        <OfficeHome
+        <OfficeHome exams={exams}
           open={openExam}
           create={() => setCreating(true)}
         />
@@ -977,6 +1060,9 @@ function App() {
           exam={selectedExam}
           back={() => setPage("home")}
           finalize={() => setPage("final")}
+          exportResults={exportResults}
+          configure={() => setConfiguring(true)}
+          revision={revision}
         />
       )
     ) : role === "grader" ? (
@@ -992,7 +1078,7 @@ function App() {
         <Grading back={() => setPage("papers")} />
       )
     ) : page === "home" ? (
-      <CouncilHome open={openExam} />
+      <CouncilHome exams={exams} open={openExam} />
     ) : page === "exam" ? (
       <CouncilExam
         exam={selectedExam}
@@ -1063,7 +1149,11 @@ function App() {
         </div>
       </aside>
       <div className="main">{view}</div>
-      {creating && <CreateModal close={() => setCreating(false)} />}
+      {loading && <div className="api-state">Đang kết nối API…</div>}
+      {apiError && <div className="api-state warning">{apiError}</div>}
+      {creating && <CreateModal onCreated={createExam} close={() => setCreating(false)} />}
+      {configuring && <SetupExam examId={selectedExamId} close={() => setConfiguring(false)} refresh={() => setRevision((value) => value + 1)} />}
+      {!authToken && <Login onLogin={login} />}
     </div>
   );
 }

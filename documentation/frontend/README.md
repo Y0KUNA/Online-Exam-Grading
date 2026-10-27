@@ -1,3 +1,9 @@
+# Frontend demo
+
+`frontend-demo` now calls the Gateway API directly. Configure `VITE_API_BASE_URL` (default `http://localhost:8080`) and `VITE_GATEWAY_URL` in `frontend-demo/.env`. The Vite development proxy forwards `/api` and `/.well-known` to that Gateway.
+
+For manual verification, sign in with an Identity account. The access token is held only in `sessionStorage`. EXAM_OFFICE users can create an exam and import its candidate roster from a CSV file during creation or later in **Thiết lập**. The CSV header must include `candidateNumber` and `fullName`; `className` is optional. This temporary test panel deliberately does not expose candidate data to GRADER or COUNCIL roles.
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.

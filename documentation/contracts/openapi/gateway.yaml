@@ -3,6 +3,37 @@ info:
   title: Online Exam Grading Gateway
   version: 0.1.0
 paths:
+  /api/v1/exams:
+    get:
+      summary: List exams visible to the authenticated workspace role
+      responses:
+        '200': { description: Exam projection list }
+    post:
+      summary: Create an exam draft (EXAM_OFFICE)
+      responses:
+        '201': { description: Exam draft created }
+        '401': { description: Missing or invalid bearer token }
+        '403': { description: Role is not EXAM_OFFICE }
+  /api/v1/exams/{examId}/submissions:
+    parameters: [{ name: examId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      summary: Office submission status projection for an exam
+      responses:
+        '200': { description: Submission list }
+  /api/v1/reviews:
+    get:
+      summary: Review projection for EXAM_OFFICE or COUNCIL; excludes candidate identity
+      parameters: [{ name: examId, in: query, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Review list }
+        '403': { description: Role is not permitted }
+  /api/v1/exams/{examId}/results/export:
+    parameters: [{ name: examId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      summary: Export finalized result core as CSV (EXAM_OFFICE only)
+      responses:
+        '200': { description: CSV download }
+        '403': { description: Role is not EXAM_OFFICE }
   /api/v1/auth/login:
     post:
       summary: Public Identity login route

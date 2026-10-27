@@ -9,3 +9,4 @@ spring:
   flyway.enabled: true
   rabbitmq.addresses: ${RABBITMQ_URL:amqp://localhost:5672}
 management.endpoints.web.exposure.include: health,info
+app.internal.hmac-secret: ${IDENTITY_HMAC_SECRET:replace-with-a-32-byte-minimum-secret}

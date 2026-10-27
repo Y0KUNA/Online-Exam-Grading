@@ -22,13 +22,17 @@
 - **Phòng khảo thí mở lại vấn đề ẩn danh** khi bài đã `READY_FOR_GRADING` (`anonymization-issues`, file 10 §4.6).
 - **Xem trước vùng che**: `anonymization-preview` (trên bài đã có) và `paper-templates/preview` (bằng bài mẫu, dùng khi kỳ thi còn DRAFT) (file 10 §4.5).
 - **Thay file scan** (`replace-file`, §4.4), **người dùng** (`users` + `graders`, file 13), **RabbitMQ có queue `validate`** (§8).
+- **Phân công BULK tất cả hoặc không** (D-11, sửa 2026-10-27): có bài không `READY_FOR_GRADING` thì từ chối cả yêu cầu, không còn `rejected[]`.
+- **COUNCIL được xem `graderId`** (D-16, sửa 2026-10-27); vẫn không thấy danh tính thí sinh và ORIGINAL.
+- **Giữ endpoint nội bộ `grader-flag`**: điểm câu `needsReview=true` kèm `note` tạo Review `GRADER_FLAG` (Q-04, sửa 2026-10-27, ADR-018).
 
 ## Các vấn đề cần chốt để quyết định
 Bảng dưới đây là danh sách các điểm còn lại mà chủ dự án cần xác nhận trước khi bắt tay vào triển khai chính thức. Nếu không chốt trong vòng ngắn, agent sẽ dùng giá trị mặc định ghi trong file 10 §1.2 và ghi vào `../project/ASSUMPTIONS.md`.
 
 | Mã | Vấn đề cần quyết định | Giá trị mặc định đã ghi | Ghi chú |
 |---|---|---|---|
-| Q-04 | `needsReview=true` có tự chuyển trạng thái REVIEW_REQUIRED không? | Không. Chỉ `POST /submissions/{id}/reviews` mới tạo Review | Dùng để tránh chuyển trạng thái sai khi chỉ hiển thị dấu hiệu |
+| Q-04 | `needsReview=true` có tự chuyển trạng thái REVIEW_REQUIRED không? | **Có, khi kèm `note` không rỗng** (gọi nội bộ `grader-flag`); không có `note` thì chỉ là dấu hiệu hiển thị. `POST /submissions/{id}/reviews` vẫn dùng được | Đã đổi theo quyết định giữ endpoint nội bộ (ADR-018) |
+| Q-16 | COUNCIL có được xem họ tên giám khảo cạnh `graderId` không? | Không: chỉ `graderId` (UUID) và nhãn GK/CL | Nếu cần để Hội đồng nhận ra giám khảo, thêm `graderName` lấy qua Identity `users/lookup` |
 | Q-05 | Khi GRADER_FLAG mở Review, đánh giá các lượt chấm đang dở của giám khảo khác | Giữ nguyên DRAFT, bỏ qua đánh giá khi còn Review chưa đóng | Important cho logic chấm chéo |
 | Q-06 | Bulk assignment khi tắt chấm chéo nhưng truyền nhiều `graderIds` | Round-robin, mỗi bài 1 giám khảo | Hợp với spec đã ghi |
 | Q-07 | Đăng nhập với hệ thống local hay IdP ngoài | Giữ `AUTH_LOCAL_ENABLED=true` | Nếu switch sau này thì sửa kịch bản auth |

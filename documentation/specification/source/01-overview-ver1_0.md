@@ -1,5 +1,6 @@
 # Hệ thống số hóa và quản lý chấm bài thi tự luận trực tuyến — 01. Overview
 > Phiên bản: v1.0 | Ngày tạo: 2026-09-19 | Trạng thái: draft
+> Cập nhật 2026-10-26: làm rõ COUNCIL không thấy danh tính thí sinh nhưng được xem graderId của các lượt chấm (ADR-016).
 
 ## Mục tiêu
 Hệ thống Web số hóa vòng đời chấm bài tự luận viết tay từ PDF scan: tiếp nhận và gán thí sinh, cắt phách điện tử, phân công, chấm độc lập/chấm chéo, review, ghép phách, chốt và xuất kết quả. Hệ thống không OCR/AI để phân tích bài hoặc quyết định điểm; quyết định chuyên môn thuộc giám khảo/Hội đồng. Thiết kế bám FR-001..FR-025 và các ràng buộc microservice, PostgreSQL database-per-service, RabbitMQ, S3-compatible storage, SSE, Docker Compose.
@@ -16,7 +17,7 @@ Tự phát hiện layout/vùng phách, tự chia câu trên scan, import rubric 
 ## Actors
 - Phòng khảo thí (EXAM_OFFICE): quản lý kỳ thi/rubric/roster, upload/gán thí sinh, xem bản gốc và ẩn danh, phân công, xử lý review kỹ thuật/quy trình, ghép phách và xuất kết quả (FR-001..FR-012, FR-017, FR-019..FR-021).
 - Giám khảo (GRADER): chỉ truy cập bài được phân công theo phách và PDF ẩn danh; nhập điểm/ghi chú, xác nhận lượt chấm và báo vấn đề; không xem danh tính/bản gốc hay điểm người khác trước khi hoàn thành (FR-013..FR-015, FR-023).
-- Hội đồng chấm thi (COUNCIL): xem dữ liệu REVIEW_REQUIRED không có danh tính và quyết định điểm khi bất đồng chuyên môn, bắt buộc lý do (FR-017, FR-018).
+- Hội đồng chấm thi (COUNCIL): xem dữ liệu REVIEW_REQUIRED không có danh tính thí sinh (được xem graderId của các lượt chấm) và quyết định điểm khi bất đồng chuyên môn, bắt buộc lý do (FR-017, FR-018).
 - API Gateway và bốn service nghiệp vụ là actors hệ thống; RabbitMQ và Object Storage là hạ tầng tích hợp. Mỗi service tự authorization theo resource dù Gateway đã xác thực (FR-023).
 
 ## Ranh giới dữ liệu và bảo mật cốt lõi

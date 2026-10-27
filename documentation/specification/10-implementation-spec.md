@@ -10,6 +10,8 @@
 
 ## Trạng thái tài liệu
 
+> Cập nhật 2026-10-27 (đồng bộ với 05 v1.3 và ADR-016..018): D-11 (bulk tất cả hoặc không), D-16 (COUNCIL xem `graderId`), Q-04 (giữ endpoint nội bộ `grader-flag`). Các thay đổi này do chủ dự án quyết định và ghi đè nội dung cũ cùng mã.
+
 Tài liệu này đã ở mức sẵn sàng để làm việc với coding agent, với điều kiện: các mục trong §1.2 được coi là mặc định phòng khi chủ dự án chưa chốt. Khi không có quyết định chính thức, giá trị mặc định ở §1.2 được áp dụng và phải được ghi trong `../project/ASSUMPTIONS.md` cùng với lý do và bối cảnh.
 
 Tài liệu này là nguồn chính cho implementation và acceptance test, và phải được coi là “ready-for-agent” sau khi các quyết định ở bảng dưới đây được xác nhận hoặc dùng mặc định.
@@ -50,18 +52,18 @@ Quy tắc cho agent:
 | D-04 | Số phách: 8 ký tự từ bảng `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, sinh bằng `SecureRandom`; trùng `UNIQUE(exam_id,value)` thì sinh lại, tối đa 5 lần rồi trả 500. |
 | D-05 | Object key: bucket `original` và `anonymized`; key = `{examId}/{submissionId}/v{n}.pdf` với `n` là phiên bản file (bắt đầu 1, tăng khi thay file; bản ANONYMIZED cùng `n` với ORIGINAL nguồn). Key **không** chứa candidateId, tên file hay phách. |
 | D-06 | Phân trang: `?limit=50&cursor=<opaque>` (max 200); response `{items:[...],nextCursor:string\|null}`. |
-| D-07 | Nhãn giám khảo `GK1..GKn` gán theo thứ tự tạo assignment BULK của submission; lượt chấm lại hiển thị `CL1, CL2…`. Nhãn tính ở Exam & Grading, không lưu danh tính giám khảo trong dữ liệu gửi cho COUNCIL. |
+| D-07 | Nhãn giám khảo `GK1..GKn` gán theo thứ tự tạo assignment BULK của submission; lượt chấm lại hiển thị `CL1, CL2…`. Nhãn tính ở Exam & Grading; dữ liệu gửi cho COUNCIL kèm `graderId` của từng lượt chấm (D-16). |
 | D-08 | Bảng bổ sung bắt buộc trong mỗi service: `audit_log`, `idempotency_record` (§5). Riêng Submission thêm `submission_event` (§4.3). |
 | D-09 | Chỉ `EXAM_OFFICE` gọi được public API xem/cấp URL **ORIGINAL** và **ANONYMIZED**. GRADER và COUNCIL nhận URL ANONYMIZED nhúng trong response của grading context / review detail (do service đó gọi Submission nội bộ sau khi tự kiểm quyền). |
 | D-10 | Mỗi submission **chỉ gồm 1 pseudonym hiện hành**; sinh lại phách (nếu cần) ghi `PseudonymHistory`. |
-| D-11 | Bulk assignment xử lý **từng bài**: bài không READY_FOR_GRADING bị đưa vào `rejected[]`, bài hợp lệ vẫn được giao. Lỗi cấp lô (`GRADER_COUNT_MISMATCH`, grader không thuộc registry) từ chối toàn bộ request. Response 201: `{created:[...],rejected:[{submissionId,code}]}`. |
+| D-11 | Bulk assignment **tất cả hoặc không** (ADR-017, chủ dự án đổi 2026-10-27): có bất kỳ bài nào không `READY_FOR_GRADING` hoặc không thuộc kỳ thi → 422 `NOT_READY_FOR_GRADING` kèm `details.submissionIds`, không tạo assignment nào. Lỗi cấp lô (`GRADER_COUNT_MISMATCH`, `GRADER_DUPLICATED`, grader không thuộc registry) cũng từ chối toàn bộ request. Response 201: `{created:[...]}`. |
 | D-12 | **Phúc khảo (REMARK) được phép sau FINALIZED**, chỉ khi dữ liệu chi tiết chưa bị purge (§9.5). Chỉ EXAM_OFFICE tạo yêu cầu phúc khảo. |
 | D-13 | **Hội đồng quyết định mọi Review.** COUNCIL (một tài khoản đại diện, D-20) ra quyết định cho cả 4 loại `reason_type`: `ANONYMIZATION`, `GRADER_FLAG`, `SCORE_DIFFERENCE`, `REMARK`. EXAM_OFFICE **không** quyết định; EXAM_OFFICE tạo yêu cầu phúc khảo (`REMARK`) và **thực thi** các thao tác kỹ thuật Hội đồng đã cho phép (retry/force, thay file, giao giám khảo chấm lại), vì Hội đồng không được thấy ORIGINAL/danh tính. "Bất đồng chuyên môn" = các giám khảo chấm lệch nhau; Hội đồng thống nhất và nhập điểm cuối. Ma trận ở §3.2. |
 | D-14 | Người dùng lưu ở bảng `users` (và hồ sơ giám khảo ở `graders`) trong **Identity DB**. **`users.user_id` là định danh duy nhất của người dùng ở mọi nơi**: `sub` của JWT, và `grader_id` / `decided_by` / `confirmed_by` / `changed_by` / `actor_id` ở mọi service. `graders.grader_id` chỉ là khóa nội bộ của bảng hồ sơ, **không** xuất hiện trong API hay DB của service khác. Chi tiết `13-user-table.md`. |
 | D-15 | `FinalResult` có phiên bản (`version`, `is_current`). Mỗi lần FINALIZED lại sau phúc khảo tạo phiên bản mới. **`retention_deadline` và `Submission.finalized_at` chỉ đặt ở lần FINALIZED đầu tiên và không bao giờ tính lại** (phúc khảo thực tế diễn ra trong khoảng một tháng; sau một năm không còn ý nghĩa xem lại). Phiên bản mới sao chép nguyên `retention_deadline`. Phiên bản cũ giữ lâu dài vì chỉ chứa dữ liệu lõi. |
 | D-17 | Identity cấp JWT khi đăng nhập (`POST /api/v1/auth/login`), vì `users.password_hash` là bắt buộc. Gateway vẫn chỉ verify JWT bằng public key/JWKS do Identity công bố. |
 | D-18 | **RabbitMQ phục vụ cả VALIDATE lẫn ANONYMIZE** (queue `submission.validate.v1` và `submission.anonymize.v1`, §8). Cập nhật ADR-002: "RabbitMQ chỉ cho pipeline xử lý PDF (validate + anonymize)", không dùng làm event bus chung. |
-| D-16 | Response cho COUNCIL tuyệt đối không có `userId`/họ tên giám khảo hay danh tính thí sinh, chỉ nhãn `GK1..GKn` / `CL1..CLn`. COUNCIL xem được mọi loại Review và PDF ANONYMIZED hiện hành, **không** xem ORIGINAL. |
+| D-16 | Response cho COUNCIL không có danh tính thí sinh; mỗi lượt chấm kèm nhãn `GK1..GKn` / `CL1..CLn` **và `graderId` (= `users.user_id`)** (ADR-016, chủ dự án đổi 2026-10-27). Họ tên, `username`, `employeeCode` của giám khảo vẫn không trả cho COUNCIL (Q-16). COUNCIL xem được mọi loại Review và PDF ANONYMIZED hiện hành, **không** xem ORIGINAL. |
 | D-19 | **Thay file scan** (`replace-file`, §4.4): do EXAM_OFFICE **thực thi**. Điều kiện: bài `REVIEW_REQUIRED` có Review `ANONYMIZATION`/`GRADER_FLAG` ở `ACTION_AUTHORIZED` với hành động `REPLACE_FILE` (Hội đồng đã cho phép), hoặc `FAILED` với `failure_code ∈ {PDF_CORRUPT, PAGE_COUNT_INVALID}` (không cần Review). Tạo **phiên bản ORIGINAL mới**, giữ bản cũ bất biến (BR-013). Giữ nguyên submission và **phách**. Không dùng cho `REMARK`/`SCORE_DIFFERENCE` (chấm lại trên cùng bản scan). |
 | D-20 | Hội đồng là một nhóm người nhưng **chỉ một người đại diện** thao tác trên hệ thống. Hệ thống không có bỏ phiếu/đa chữ ký. Có thể có nhiều tài khoản COUNCIL, nhưng mỗi Review chỉ được quyết định **một lần** bởi tài khoản đầu tiên gửi hợp lệ (khóa lạc quan `Review.version`; người sau nhận 409 `REVIEW_ALREADY_DECIDED`); `decided_by` được ghi lại. |
 | D-21 | **Bất biến I1**: mỗi submission có **tối đa một Review chưa đóng** (`OPEN` hoặc `ACTION_AUTHORIZED`), đảm bảo bằng partial unique index (§5). Vì vậy trạng thái chỉ rời `REVIEW_REQUIRED` khi Review duy nhất đó đóng hoặc được thực thi; không có tình huống "hai review kéo về hai hướng". Cờ `GRADER_FLAG` mới khi đã có Review chưa đóng được **gộp** vào Review đó dưới dạng ghi chú (§3.2). |
@@ -77,7 +79,8 @@ Quy tắc cho agent:
 
 | ID | Vấn đề | Mặc định |
 |---|---|---|
-| Q-04 | `needsReview=true` trên điểm câu có tự chuyển REVIEW_REQUIRED không? | **Không**; chỉ là dấu hiệu hiển thị. Chỉ `POST /submissions/{id}/reviews` (có `reason`) mới tạo Review và đổi trạng thái (khớp docx §3.3, BR-018). 05 ghi khác. |
+| Q-04 | `needsReview=true` trên điểm câu có tự chuyển REVIEW_REQUIRED không? | **Có, khi kèm `note` không rỗng** (chủ dự án giữ endpoint nội bộ, ADR-018): Exam & Grading ghi outbox gọi nội bộ `POST /submissions/{id}/reviews/grader-flag` với `reason=note`; Result tạo Review `GRADER_FLAG` (hoặc gộp, D-21) rồi đổi trạng thái (T14). `needsReview=true` không có `note` chỉ là dấu hiệu hiển thị, không tạo Review. Endpoint công khai `POST /submissions/{id}/reviews` vẫn dùng được và cùng quy tắc (BR-018). |
+| Q-16 | COUNCIL có được xem họ tên giám khảo cạnh `graderId` không? | **Không**: chỉ `graderId` (UUID) và nhãn GK/CL. Nếu cần để Hội đồng nhận ra giám khảo, thêm `graderName` lấy qua Identity `users/lookup`. |
 | Q-05 | Khi submission vào REVIEW_REQUIRED do GRADER_FLAG, các lượt chấm của GK khác đang dở? | Giữ nguyên DRAFT, vẫn confirm được, nhưng Result/Review **bỏ qua đánh giá** khi còn Review chưa đóng; Review đóng xong thì đánh giá lại. |
 | Q-06 | Bulk assignment khi tắt chấm chéo và `graderIds` nhiều hơn 1? | Round-robin, mỗi bài đúng 1 giám khảo. Bật chấm chéo: `len(graderIds)==graderCount`, mỗi bài giao cho tất cả. |
 | Q-07 | Đăng nhập (đã chốt bởi D-17) | Giữ cờ `AUTH_LOCAL_ENABLED=true`. Nếu sau này dùng IdP ngoài thì tắt cờ; `users` thành danh bạ và `password_hash` lưu giá trị ngẫu nhiên không dùng được. |
@@ -131,7 +134,7 @@ Quy tắc cho agent:
 | T11 | ANONYMIZING → REVIEW_REQUIRED | Worker ANONYMIZE | Lỗi template (không retry), PDF vẫn đọc được | Tạo Review `ANONYMIZATION` với `technical_code=TEMPLATE_MASK_ERROR`, `detail` |
 | T12 | READY_FOR_GRADING → GRADING | Exam & Grading (bulk assignment) | Tất cả bài đều READY_FOR_GRADING | |
 | T13 | GRADING → COMPLETED | Result/Review | Đủ lượt CONFIRMED theo cấu hình (không tính lượt `is_regrade`); **không có Review chưa đóng**; (cross) mọi cặp ≤ threshold | |
-| T14 | GRADING → REVIEW_REQUIRED | Result/Review | `GRADER_FLAG` (GRADER gọi `POST …/reviews`, không có Review chưa đóng) hoặc cặp lệch > threshold (Review `SCORE_DIFFERENCE`). Tạo Review trước, rồi đổi status | Review mới là Review chưa đóng duy nhất (D-21) |
+| T14 | GRADING → REVIEW_REQUIRED | Result/Review | `GRADER_FLAG` (GRADER gọi `POST …/reviews`, hoặc Exam & Grading gọi nội bộ `grader-flag` khi `needsReview=true` kèm `note`; không có Review chưa đóng) hoặc cặp lệch > threshold (Review `SCORE_DIFFERENCE`). Tạo Review trước, rồi đổi status | Review mới là Review chưa đóng duy nhất (D-21) |
 | T15 | REVIEW_REQUIRED → GRADING | Result/Review hoặc Exam & Grading | (a) Hội đồng `DISMISS` cho `GRADER_FLAG` → Review `RESOLVED`; hoặc (b) Hội đồng cho phép `REGRADE` (Review `ACTION_AUTHORIZED`) và EO tạo SINGLE_REVIEW assignment có `reviewId` | (a): đánh giá lại ngay §9.1 (có thể sang T13). (b): lượt chấm lại `is_regrade=true`, Review vẫn `ACTION_AUTHORIZED` |
 | T16 | REVIEW_REQUIRED → COMPLETED | Result/Review | Hội đồng `SET_FINAL_SCORE` (`SCORE_DIFFERENCE`; `REMARK`; hoặc `GRADER_FLAG` sau chấm lại) | Review → `RESOLVED`; lưu `CouncilDecision`; `decision_source=COUNCIL` (REMARK → `REMARK`) |
 | T17 | REVIEW_REQUIRED → VALIDATING | EO `/retry` `{step:"VALIDATE",force:true,reviewId}` | Review `ANONYMIZATION` (`TEMPLATE_SIZE_MISMATCH`) ở `ACTION_AUTHORIZED` với `FORCE_ANONYMIZE`; chưa có lượt chấm | Job `VALIDATE` `force=true` (bỏ qua ±5%; vẫn kiểm đọc được/số trang, sinh phách, publish `anonymize`); Review → `RESOLVED(FORCE_ANONYMIZE)`. EO nên xem `anonymization-preview` (§4.5) trước khi chạy |
@@ -170,7 +173,7 @@ Mọi transition khác → `409 ILLEGAL_TRANSITION`. `FINALIZED` **không còn l
 
   **Gộp cờ giám khảo:** khi đã có Review chưa đóng, `GRADER_FLAG` mới được gộp thành ghi chú (`review_note`, hiển thị nhãn `GKi`) và trả 200 `{reviewId,merged:true}`; Hội đồng thấy ghi chú trong chi tiết Review.
 
-  **Quyền xem:** COUNCIL và EO xem được mọi loại Review; COUNCIL không thấy danh tính thí sinh/giám khảo (D-16). EO thực thi hành động không có Review `ACTION_AUTHORIZED` tương ứng → 409 `REVIEW_NOT_AUTHORIZED`. Metric `review_open_age_hours` cảnh báo Review treo (Hội đồng chưa quyết, hoặc EO chưa thực thi).
+  **Quyền xem:** COUNCIL và EO xem được mọi loại Review; COUNCIL không thấy danh tính thí sinh; thấy `graderId` của từng lượt chấm (D-16). EO thực thi hành động không có Review `ACTION_AUTHORIZED` tương ứng → 409 `REVIEW_NOT_AUTHORIZED`. Metric `review_open_age_hours` cảnh báo Review treo (Hội đồng chưa quyết, hoặc EO chưa thực thi).
 - **FinalResult.purge_status**: `PENDING → IN_PROGRESS → PURGED | FAILED`; `FAILED → IN_PROGRESS` ở lần chạy tiếp theo.
 
 ## 4. API bổ sung (ngoài 05)
@@ -191,12 +194,12 @@ Quy ước: lỗi theo `{code,message,requestId,details?}`. Role viết tắt: E
 | `GET /api/v1/exams/{id}/submissions?status=&cursor=&limit=` | EO | Danh sách + lọc. |
 | `POST /api/v1/submissions/{id}/replace-file`, `POST …/replace-file/{replacementId}/complete`, `DELETE …/replace-file`, `GET /api/v1/submissions/{id}/files` | EO | Thay file scan, xem phiên bản file: §4.4. `files/ORIGINAL/access` nhận thêm `?version=n` (mặc định bản hiện hành); `files/ANONYMIZED/access` luôn là bản hiện hành. |
 | `DELETE /api/v1/exams/{id}/assignments/{assignmentId}` | EO | Hủy assignment (§3.2). |
-| `GET /api/v1/reviews?status=&reasonType=&cursor=` | EO, CO | Cả hai thấy **mọi loại** Review. CO không thấy danh tính thí sinh/giám khảo. Mặc định trả Review `OPEN` trước. |
-| `GET /api/v1/reviews/{id}` | EO, CO | Chi tiết: `reasonType`, `technicalCode`, `detail`, `notes[]` (nhãn GK), các lượt chấm (nhãn GK/CL, tổng điểm, điểm câu), `allowedDecisions[]`, `authorizedAction`, `anonymizedFileAccessUrl` (bản hiện hành, có thể `null` nếu chưa tạo). Không có URL ORIGINAL. |
+| `GET /api/v1/reviews?status=&reasonType=&cursor=` | EO, CO | Cả hai thấy **mọi loại** Review. CO không thấy danh tính thí sinh; thấy `graderId` của từng lượt chấm (D-16). Mặc định trả Review `OPEN` trước. |
+| `GET /api/v1/reviews/{id}` | EO, CO | Chi tiết: `reasonType`, `technicalCode`, `detail`, `notes[]` (nhãn GK), các lượt chấm (nhãn GK/CL, `graderId`, tổng điểm, điểm câu), `allowedDecisions[]`, `authorizedAction`, `anonymizedFileAccessUrl` (bản hiện hành, có thể `null` nếu chưa tạo). Không có URL ORIGINAL. |
 | `POST /api/v1/reviews/{id}/decision` | **CO** | `{decisionType, reason, finalScore?}` theo §3.2. 200 `{decisionId,reviewId,decisionType,status}` với `status` là `ACTION_AUTHORIZED` hoặc `RESOLVED`. Lỗi: 422 `REASON_REQUIRED`/`DECISION_NOT_ALLOWED`/`SCORE_OUT_OF_RANGE`, 409 `REVIEW_ALREADY_DECIDED`. `POST …/council-decision {finalScore,reason}` (05) là bí danh của `SET_FINAL_SCORE`. EO gọi → 403. |
 | `POST /api/v1/submissions/{id}/retry` (05, mở rộng) | EO | Body `{step, force?, reviewId?, templateId?}`. Bài `FAILED`: như T19. Bài `REVIEW_REQUIRED`: bắt buộc `reviewId` đang `ACTION_AUTHORIZED` với `FORCE_ANONYMIZE` (→ `step=VALIDATE`, `force=true`, T17) hoặc `REPROCESS` (→ `step=ANONYMIZE`, T18); sai → 409 `REVIEW_NOT_AUTHORIZED`. `templateId` chỉ cho `REPROCESS` (Q-15): không tồn tại → 404, không `active` → 422 `TEMPLATE_INACTIVE`, dùng với hành động khác → 422. |
 | `POST /api/v1/submissions/{id}/anonymization-issues` | EO | `{reason}` bắt buộc. Mở lại vấn đề ẩn danh khi bài `READY_FOR_GRADING` (T27): §4.6. 201 `{reviewId,status:"OPEN"}`; 409 `INVALID_STATE` (không phải `READY_FOR_GRADING`), 409 `REVIEW_ALREADY_OPEN`, 422 `reason` trống. Hỗ trợ `Idempotency-Key`. |
-| `POST /api/v1/submissions/{id}/assignments` (05, mở rộng) | EO | `SINGLE_REVIEW` nhận thêm `reviewId` = Review `ACTION_AUTHORIZED` với `REGRADE` (T15b), `graderId` do **EO chọn** (Hội đồng không biết danh tính giám khảo). Sai → 409 `REVIEW_NOT_AUTHORIZED`. |
+| `POST /api/v1/submissions/{id}/assignments` (05, mở rộng) | EO | `SINGLE_REVIEW` nhận thêm `reviewId` = Review `ACTION_AUTHORIZED` với `REGRADE` (T15b), `graderId` do **EO chọn**. Sai → 409 `REVIEW_NOT_AUTHORIZED`. |
 | `POST /api/v1/submissions/{id}/remark` | EO | `{reason}` bắt buộc. Cho phép khi submission `COMPLETED` hoặc `FINALIZED` trong cửa sổ §9.5; ngoài cửa sổ → 409 `REMARK_WINDOW_CLOSED` (đã purge: 409 `PURGED_DATA_UNAVAILABLE`); đã có Review chưa đóng → 409 `REVIEW_ALREADY_OPEN`. Chỉ **tạo yêu cầu**; Hội đồng quyết định. |
 | `POST /api/v1/reviews/{id}/withdraw` | EO | Rút phúc khảo (T23). Chỉ Review `REMARK` chưa có `SET_FINAL_SCORE`; hủy các assignment/lượt chấm lại chưa confirm. |
 | `POST /api/v1/submissions/{id}/reviews` (05) | GR | `{reasonType:"GRADER_FLAG",reason}` cho bài được giao. Có Review chưa đóng → gộp (§3.2). EO không dùng endpoint này cho `REMARK` (dùng `/remark`). |
@@ -217,6 +220,7 @@ Quy ước: lỗi theo `{code,message,requestId,details?}`. Role viết tắt: E
 | `POST /pseudonyms/lookup` | Exam&Grading, Result → Identity | `{submissionIds:[uuid]}` → `{items:[{submissionId,pseudonym}]}`; **không** trả candidate. |
 | `POST /users/lookup` | Exam&Grading, Result → Identity | `{userIds:[uuid]}` → `{items:[{userId,username,fullName,role,isActive}]}`. Chỉ trả cho service được allowlist; không trả `password_hash`. |
 | `POST /grading/attempts-confirmed` | Exam&Grading → Result | `{submissionId,attemptId}`; idempotent theo `attemptId`; Result chạy §9.1. |
+| `POST /submissions/{id}/reviews/grader-flag` | Exam&Grading → Result | `{graderId,attemptId,reason}` (`reason` = `note` của điểm câu, không rỗng). Idempotent theo `Idempotency-Key = attemptId:flag:<questionId>`. Result áp dụng cùng quy tắc với `POST /submissions/{id}/reviews`: chưa có Review chưa đóng → tạo Review `GRADER_FLAG` (T14, `openedBy=graderId`); đã có → gộp ghi chú (200 `{reviewId,merged:true}`). Người gọi đã kiểm giám khảo được giao bài nên Result không gọi `assignments/check`. |
 | `GET /grading/assignments/check?submissionId=&graderId=` | Result → Exam&Grading | Dùng khi GRADER gửi flag: `{assigned:boolean}`. |
 | `GET /grading/submissions/{id}/attempt-summary` | Submission → Exam&Grading | `{confirmedCount,draftCount,openAssignmentCount}` (kiểm trước khi cho thay file). |
 | `POST /grading/submissions/{id}/discard-open-work` | Submission → Exam&Grading | Idempotent (`Idempotency-Key=replacementId`). Hủy assignment mở, đặt lượt `DRAFT` → `DISCARDED`; trả `{discardedAttempts,cancelledAssignments}`; 409 `ATTEMPTS_EXIST` nếu có lượt `CONFIRMED`. |
@@ -299,7 +303,7 @@ Phản hồi, header, `PageMasker`, giới hạn tài nguyên (`PREVIEW_MAX_CONC
 Dùng khi EO xem trước (§4.5) thấy vùng che **thiếu** ở một bài đã ẩn danh xong nhưng chưa giao chấm.
 
 **Luồng**
-1. EO gọi `POST /submissions/{id}/anonymization-issues {reason}` → T27: Review `ANONYMIZATION`/`MASK_INSUFFICIENT` `OPEN`, bài `REVIEW_REQUIRED`. Bài rời `READY_FOR_GRADING` nên **không còn được giao chấm** (bulk assignment đưa vào `rejected[]`, D-11).
+1. EO gọi `POST /submissions/{id}/anonymization-issues {reason}` → T27: Review `ANONYMIZATION`/`MASK_INSUFFICIENT` `OPEN`, bài `REVIEW_REQUIRED`. Bài rời `READY_FOR_GRADING` nên **không còn được giao chấm** (bulk assignment chứa bài này bị 422 `NOT_READY_FOR_GRADING`, D-11).
 2. COUNCIL xem Review (ghi chú của EO, `anonymizedFileAccessUrl`; không thấy ORIGINAL) và quyết định (§3.2):
    - `DISMISS`: chấp nhận bản ẩn danh hiện có → T28, bài về `READY_FOR_GRADING`.
    - `REPROCESS`: dựng lại bản ẩn danh. EO gọi `retry {step:"ANONYMIZE", reviewId, templateId?}` (T18). Nếu nguyên nhân là tọa độ template sai, EO dùng `templateId` của template đã chỉnh (xem trước bằng `paper-templates/preview`).
@@ -465,7 +469,7 @@ Cột: Kỳ thi, Môn, SBD, Họ tên, Lớp, Phách, rồi với mỗi GKi: `GK
 
 ## 11. Catalog mã lỗi bổ sung
 
-`ILLEGAL_TRANSITION, STATUS_VERSION_CONFLICT, IDEMPOTENCY_KEY_REUSED, EXAM_NOT_ACTIVE, TEMPLATE_IN_USE, PDF_CORRUPT, PAGE_COUNT_INVALID, TEMPLATE_SIZE_MISMATCH, TEMPLATE_INACTIVE, FILE_NOT_READY, ANONYMIZE_RETRY_EXHAUSTED, GRADER_NOT_REGISTERED, ATTEMPT_ALREADY_CONFIRMED, REVIEW_ALREADY_OPEN, REVIEW_ALREADY_DECIDED, REVIEW_NOT_AUTHORIZED, DECISION_NOT_ALLOWED, REASON_REQUIRED, SCORE_OUT_OF_RANGE, BINDING_RELEASED, CANDIDATE_ALREADY_BOUND, INVALID_REGION, PREVIEW_BUSY, REMARK_WINDOW_CLOSED, USERNAME_TAKEN, EMAIL_TAKEN, LAST_EXAM_OFFICE, USER_NOT_FOUND, REPLACE_NOT_ALLOWED, ATTEMPTS_EXIST, REPLACEMENT_IN_PROGRESS, REPLACEMENT_NOT_FOUND, REPLACEMENT_EXPIRED, ROLE_CHANGE_FORBIDDEN, INVALID_CREDENTIALS, VALIDATE_RETRY_EXHAUSTED, RESULTS_NOT_FINALIZED, PURGED_DATA_UNAVAILABLE`. Ánh xạ HTTP: 409 cho trạng thái/xung đột, 422 cho vi phạm quy tắc nghiệp vụ, 403 `RESOURCE_FORBIDDEN` khi sai tài nguyên, 404 khi không tồn tại (không phân biệt "không tồn tại" và "không thuộc bạn" với GRADER để tránh dò).
+`ILLEGAL_TRANSITION, STATUS_VERSION_CONFLICT, IDEMPOTENCY_KEY_REUSED, EXAM_NOT_ACTIVE, TEMPLATE_IN_USE, PDF_CORRUPT, PAGE_COUNT_INVALID, TEMPLATE_SIZE_MISMATCH, TEMPLATE_INACTIVE, FILE_NOT_READY, ANONYMIZE_RETRY_EXHAUSTED, GRADER_NOT_REGISTERED, GRADER_DUPLICATED, NOT_READY_FOR_GRADING, ATTEMPT_ALREADY_CONFIRMED, REVIEW_ALREADY_OPEN, REVIEW_ALREADY_DECIDED, REVIEW_NOT_AUTHORIZED, DECISION_NOT_ALLOWED, REASON_REQUIRED, SCORE_OUT_OF_RANGE, BINDING_RELEASED, CANDIDATE_ALREADY_BOUND, INVALID_REGION, PREVIEW_BUSY, REMARK_WINDOW_CLOSED, USERNAME_TAKEN, EMAIL_TAKEN, LAST_EXAM_OFFICE, USER_NOT_FOUND, REPLACE_NOT_ALLOWED, ATTEMPTS_EXIST, REPLACEMENT_IN_PROGRESS, REPLACEMENT_NOT_FOUND, REPLACEMENT_EXPIRED, ROLE_CHANGE_FORBIDDEN, INVALID_CREDENTIALS, VALIDATE_RETRY_EXHAUSTED, RESULTS_NOT_FINALIZED, PURGED_DATA_UNAVAILABLE`. Ánh xạ HTTP: 409 cho trạng thái/xung đột, 422 cho vi phạm quy tắc nghiệp vụ, 403 `RESOURCE_FORBIDDEN` khi sai tài nguyên, 404 khi không tồn tại (không phân biệt "không tồn tại" và "không thuộc bạn" với GRADER để tránh dò).
 
 ## 12. Độ tin cậy khi gọi liên service (transactional outbox)
 
@@ -495,6 +499,7 @@ outbox_event(event_id uuid pk, aggregate_id uuid not null, type varchar(80) not 
 | Hành động | Ghi outbox ở | Đích | Cùng transaction với |
 |---|---|---|---|
 | Giám khảo confirm lượt chấm | Exam & Grading | Result `attempts-confirmed` | `Attempt=CONFIRMED` |
+| Giám khảo lưu điểm câu có `needsReview=true` kèm `note` | Exam & Grading | Result `reviews/grader-flag` | Ghi `QuestionScore` |
 | Đánh giá chấm chéo → T13/T14; lượt chấm lại confirm → T26 | Result | Submission `/status` | Tạo Review (T14) / chuyển Review về `OPEN` (T26) |
 | Finalize T20, phúc khảo T21/T22, rút T23 | Result | Submission `/status` | `FinalResult`/Review/`retention_hold` |
 | Bulk assignment T12 | Exam & Grading | Submission `/status` (`READY_FOR_GRADING→GRADING`) | Tạo assignments |

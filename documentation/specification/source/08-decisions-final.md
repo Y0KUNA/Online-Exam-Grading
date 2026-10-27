@@ -1,6 +1,6 @@
 # Hệ thống số hóa và quản lý chấm bài thi tự luận trực tuyến — 08. Decisions (Final)
-> Phiên bản: v1.1-final | Ngày cập nhật: 2026-09-19 | Trạng thái: draft
-> Hợp nhất toàn bộ ADR từ v1.0 và v1.1. ADR-001 đến ADR-012 giữ nguyên nội dung v1.0. ADR-013 bổ sung từ v1.1.
+> Phiên bản: v1.3-final | Ngày cập nhật: 2026-10-26 | Trạng thái: draft
+> Hợp nhất toàn bộ ADR từ v1.0 và v1.1. ADR-001 đến ADR-012 giữ nguyên nội dung v1.0. ADR-013 bổ sung từ v1.1. ADR-014 và ADR-015 bổ sung từ v1.2. ADR-016 đến ADR-018 bổ sung từ v1.3.
 
 ### ADR-001: Microservice rút gọn với 4 service nghiệp vụ
 - Bối cảnh: Constraint yêu cầu Gateway + Identity, Submission, Exam & Grading, Result/Review; danh tính phải tách khỏi grading (FR-008, FR-023, BR-006).
@@ -102,3 +102,38 @@
   - `ExamFile.sha256` không còn tính được ngay lúc nhận file; dời sang bước VALIDATING — thay đổi nhỏ trong data model (04-data-model ver1.1).
   - Gateway vẫn phải xử lý băng thông upload (khác với Option B), nên không đạt mức "hoàn toàn offload khỏi Gateway" — được chấp nhận vì lợi ích bảo mật của việc giữ một cửa duy nhất được đánh giá cao hơn ở quy mô MVP.
   - Nếu tương lai cần scale upload throughput vượt khả năng Gateway (không phải bối cảnh MVP hiện tại), cần ADR mới để cân nhắc lại Option B hoặc CDN/edge upload.
+
+### ADR-014: Ghim rubric theo lượt chấm và tạo lượt chấm idempotent
+- Bối cảnh: Rubric ACTIVE có thể đổi trong lúc giám khảo đang chấm; gọi tạo lượt chấm hai lần (bấm đúp, retry) sinh hai lượt DRAFT cho cùng assignment (FR-014, FR-024).
+- Phương án đã xét: lấy rubric ACTIVE mỗi lần mở ngữ cảnh; ghim `rubric_id` vào GradingAttempt khi tạo lượt; tạo lượt không kiểm tra trùng.
+- Quyết định: GradingAttempt có `rubric_id` bắt buộc, ngữ cảnh chấm đọc rubric theo `rubric_id`; tạo lượt tìm lượt DRAFT hiện có của assignment trước và trả lại nếu có.
+- Lý do: điểm luôn được đối chiếu với đúng rubric đã dùng lúc bắt đầu chấm, và retry không sinh dữ liệu trùng.
+- Đánh đổi/hệ quả: thêm một cột và một index (assignment_id,status); lượt chấm lại sau khi rubric đổi vẫn dùng rubric ACTIVE tại thời điểm tạo lượt mới.
+
+### ADR-015: Ghi cục bộ trước, đồng bộ trạng thái Submission sau, có idempotencyKey
+- Bối cảnh: phân công, tạo review, quyết định Hội đồng và chốt điểm đều ghi DB của service mình rồi phải đổi trạng thái submission ở Submission Service; không có distributed transaction (ADR-001).
+- Phương án đã xét: đổi trạng thái trước rồi mới ghi dữ liệu; ghi và commit cục bộ trước, đồng bộ trạng thái sau bằng retry idempotent; transactional outbox.
+- Quyết định: chọn phương án thứ hai. Service commit dữ liệu nghiệp vụ, rồi gọi Submission với `expectedStatus` và `idempotencyKey`; nếu lỗi thì giữ dữ liệu đã commit, trả 202 và gọi lại chỉ thực hiện bước đồng bộ. Ràng buộc: tối đa một Review OPEN cho mỗi submission, UNIQUE(submission_id) cho FinalResult, UNIQUE(review_id) cho CouncilDecision, `finalizedAt` và `retentionDeadline` tính trước khi INSERT FinalResult. Submission chuyển sang GRADING ngay lúc phân công (không phải lúc tạo lượt chấm).
+- Lý do: kết quả nghiệp vụ không bị mất khi service khác tạm lỗi; có Review hoặc FinalResult mà trạng thái chưa đổi dễ phục hồi hơn trạng thái đã đổi mà không có bản ghi tương ứng.
+- Đánh đổi/hệ quả: có cửa sổ ngắn lệch trạng thái giữa hai service, cần job reconcile; thông báo lượt chấm đã xác nhận chưa dùng outbox nên có thể mất (xem 09-risks-open-items-final).
+
+### ADR-016: Hội đồng được xem graderId của các lượt chấm
+- Bối cảnh: khi giải quyết bất đồng chuyên môn (FR-018), thiết kế ban đầu ẩn `graderId` và chỉ hiển thị nhãn GK1/GK2. Yêu cầu không bắt buộc ẩn giám khảo với Hội đồng, và Hội đồng hoặc Phòng khảo thí có thể cần liên hệ hai giám khảo để họ giải trình lý do chấm.
+- Phương án đã xét: chỉ nhãn GK1/GK2; thêm `graderId` cho COUNCIL; chỉ EXAM_OFFICE thấy `graderId`.
+- Quyết định: `ReviewDetailDto` trả `graderId` cùng nhãn GK1/GK2 cho EXAM_OFFICE và COUNCIL. Danh tính thí sinh và bản ORIGINAL vẫn không trả cho COUNCIL.
+- Lý do: hai giám khảo bất đồng có thể giải trình trực tiếp với Hội đồng; yêu cầu hiện tại chỉ ràng buộc ẩn danh tính thí sinh và điểm của giám khảo khác trước khi hoàn thành lượt chấm.
+- Đánh đổi/hệ quả: Hội đồng có thể thiên vị theo uy tín giám khảo; giảm thiểu bằng quy trình vận hành và audit. Việc trao đổi giữa giám khảo diễn ra ngoài hệ thống; nếu điểm thay đổi thì phải đi qua chấm lại (REGRADE) hoặc quyết định của Hội đồng có lý do (BR-011), không sửa lượt chấm đã CONFIRMED.
+
+### ADR-017: Phân công BULK theo nguyên tắc tất cả hoặc không
+- Bối cảnh: bản thiết kế trước cho phép từ chối từng bài (`rejected[]`) khi phân công hàng loạt, làm kết quả khó dự đoán và dễ để lại tập phân công dở dang so với cấu hình chấm chéo.
+- Phương án đã xét: cho phép từ chối một phần; từ chối toàn bộ khi có bất kỳ bài không hợp lệ.
+- Quyết định: nếu có bất kỳ bài nào không ở READY_FOR_GRADING hoặc không thuộc kỳ thi thì trả 422 NOT_READY_FOR_GRADING (kèm `details.submissionIds`) và không tạo assignment nào. Số giám khảo sai cấu hình hoặc danh sách giám khảo trùng cũng từ chối toàn bộ.
+- Lý do: phản hồi một nghĩa; EXAM_OFFICE chỉnh danh sách rồi gửi lại; không có trạng thái phân công dở.
+- Đánh đổi/hệ quả: một bài chưa sẵn sàng chặn cả lô, người dùng phải loại bài đó ra trước khi gửi lại.
+
+### ADR-018: Giữ hai đường tạo review GRADER_FLAG
+- Bối cảnh: giám khảo có thể báo vấn đề bằng `POST /api/v1/submissions/{id}/reviews`, và khi nhập điểm với `needsReview=true` thì Exam & Grading cũng cần tạo review.
+- Phương án đã xét: chỉ endpoint công khai (web client gọi thêm lần nữa); chỉ endpoint nội bộ; giữ cả hai.
+- Quyết định: giữ cả hai. Cùng áp dụng quy tắc kiểm phân công, tối đa một Review OPEN cho mỗi submission và đồng bộ trạng thái theo ADR-015; khác nhau ở nguồn xác thực danh tính giám khảo (JWT qua Gateway, hoặc `graderId` do Exam & Grading đã xác thực kèm service credential).
+- Lý do: `needsReview` là một phần của thao tác nhập điểm, tránh bắt web client gọi hai API cho một hành động.
+- Đánh đổi/hệ quả: hai điểm vào cần giữ quy tắc đồng bộ và cần kiểm thử cả hai.

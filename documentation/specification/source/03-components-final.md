@@ -1,6 +1,7 @@
 # Hệ thống số hóa và quản lý chấm bài thi tự luận trực tuyến — 03. Components
-> Phiên bản: 2.0 (hợp nhất v1.0 + v1.1) | Ngày hợp nhất: 2026-09-22 | Trạng thái: final
+> Phiên bản: 2.1 | Ngày cập nhật: 2026-10-26 | Trạng thái: final
 > Ghi chú hợp nhất: tài liệu này thay thế cả 03-components-ver1.0.md và 03-components-ver1_1.md. Web Client, API Gateway, Submission Service và Object Storage cập nhật theo luồng upload presigned POST direct-to-MinIO (ADR-013). Các mục khác giữ nguyên nội dung v1.0.
+> Cập nhật v2.1 (2026-10-26): bổ sung cấu trúc lớp bên trong Exam & Grading và Result/Review, và bảng ánh xạ lớp Client → service đích ở cuối tài liệu.
 
 ## Web Client
 Trách nhiệm: giao diện EXAM_OFFICE/GRADER/COUNCIL; upload; theo dõi SSE; viewer PDF + rubric side-by-side; form điểm/review/export. Input là thao tác người dùng/JWT; output là REST, EventSource/SSE, và request upload multipart-form trực tiếp tới route pass-through `/storage/*` trên Gateway. Chỉ gọi API Gateway, không gọi service/Object Storage trực tiếp — kể cả upload cũng đi qua Gateway (route proxy, không phải qua Submission Service) chứ không có domain MinIO riêng nào lộ ra client ngoài `fields`/`url` do backend cấp. Dự kiến React + TypeScript + PDF.js. Đáp ứng FR-009, FR-013.
@@ -17,8 +18,12 @@ Trách nhiệm: tiếp nhận metadata upload (không còn nhận bytes PDF tr�
 ## Exam & Grading Service
 Trách nhiệm: exam, paper template reference, question/criteria, rubric DRAFT/ACTIVE, DOCX table extraction, regex suggestion, assignment, grading attempt, question score và confirm. Input: REST/DOCX; output: exam/rubric/grading context, confirmed grading snapshots. Phụ thuộc Exam/Grading PostgreSQL, Submission internal REST để kiểm tra status/file access; Result gọi API snapshot. Dự kiến Java 21 + Spring Boot + PostgreSQL + Apache POI. Parser giữ grid/merge 1-1; regex chỉ prefill và activation luôn yêu cầu EXAM_OFFICE confirm (FR-001..FR-004, FR-012..FR-015, FR-024).
 
+Cấu trúc bên trong (v2.1): `AssignmentController`/`AssignmentService` (phân công BULK và SINGLE_REVIEW), `GradingController`/`GradingService` (tạo lượt, ngữ cảnh, nhập điểm, confirm), `InternalGradingController`/`GradingSnapshotService` (snapshot cho Result/Review, chỉ service credential), `AssignmentAuthorizer`, `ScoreValidator`, các Repository và ba Client (`IdentityClient`, `SubmissionClient`, `ResultReviewClient`). Lượt chấm ghim rubric theo `rubric_id`.
+
 ## Result/Review Service
 Trách nhiệm: pairwise cross-grading, review lifecycle, Council decision, final result, finalize orchestration, export Excel/CSV và retention scheduler/orchestrator. Input: grading snapshots, review command, finalize/export command; output: review/final result/export stream và purge commands. Phụ thuộc Result PostgreSQL, Exam & Grading REST, Submission REST, Identity REST. Dự kiến Java 21 + Spring Boot + PostgreSQL + Apache POI/CSV library và Spring Scheduler. Quy tắc tính điểm dùng BigDecimal, RoundingMode.HALF_UP scale 2 (FR-016..FR-021, FR-024/025).
+
+Cấu trúc bên trong (v2.1): `ReviewController`/`InternalReviewController`/`ReviewService` (tạo review, tự phát hiện chênh lệch, xem chi tiết), `ScoreComparisonService` (so sánh từng cặp), `CouncilDecisionController`/`CouncilDecisionService`, `FinalizationController`/`FinalizationService` cùng `ScoreCalculationService` (single/cross/Hội đồng, HALF_UP), các Repository và ba Client (`GradingClient`, `SubmissionClient`, `IdentityClient`). `IdentityClient.getIdentity` là điểm duy nhất ghép số phách với danh tính, chỉ `FinalizationService` gọi.
 
 ## RabbitMQ
 Trách nhiệm: buffer/deliver anonymization jobs, retry queues với backoff và dead-letter sau retry kỹ thuật. Input: durable messages có jobId, submissionId, attempt; output: delivery tới Submission worker. Chỉ dùng cho công việc che phách, không dùng như event bus toàn hệ thống để tránh over-engineering. Durable queue/message + manual ack hỗ trợ FR-010 và NFR-availability.
@@ -31,3 +36,23 @@ MinIO cho Docker Compose, API S3-compatible để có thể chuyển AWS S3. Dù
 
 ## Giao tiếp và ownership
 REST synchronous dùng cho query/command cần phản hồi tức thời; RabbitMQ chỉ cho anonymization. Route `/storage/*` trên Gateway không tính là "internal REST request" giữa các service — nó là proxy tầng network thuần túy, không mang `X-User-Id`/`X-Role`/HMAC (vì presigned policy tự thân đã là cơ chế xác thực/ủy quyền cho riêng thao tác object đó). Mỗi internal request khác có requestId, user context ký và service authentication; service đích kiểm resource. Không service nào truy vấn DB của service khác. Correlation bằng UUID (`examId`, `submissionId`) nhưng PII candidateId chỉ xuất hiện ở Identity và ở snapshot kết quả lâu dài có kiểm soát trong Result sau ghép phách. Điều này giảm khả năng deanonymization trong grading path (NFR-security, BR-006/007).
+
+## Ánh xạ lớp Client → service đích (bổ sung v2.1)
+Mọi dữ liệu thuộc service khác chỉ lấy qua REST nội bộ bằng các lớp Client dưới đây; Client không chứa logic nghiệp vụ và dùng service credential, không dùng JWT người dùng.
+
+| Service gọi | Client | Service đích | Phương thức | Endpoint |
+|---|---|---|---|---|
+| Submission | IdentityClient | Identity/Pseudonym | createPseudonym | POST /internal/v1/pseudonyms |
+| Exam & Grading | IdentityClient | Identity/Pseudonym | getPseudonyms, getPseudonym | GET /internal/v1/pseudonyms?submissionIds=... |
+| Exam & Grading | SubmissionClient | Submission | getStatus | GET /internal/v1/submissions/{id} |
+| | | | getAnonymizedAccess | POST /internal/v1/submissions/{id}/files/ANONYMIZED/access |
+| | | | updateStatus | POST /internal/v1/submissions/{id}/status |
+| Exam & Grading | ResultReviewClient | Result/Review | notifyAttemptConfirmed | POST /internal/v1/submissions/{id}/attempt-confirmed |
+| | | | createGraderFlagReview | POST /internal/v1/submissions/{id}/reviews/grader-flag |
+| Result/Review | GradingClient | Exam & Grading | getGradingSnapshot | GET /internal/v1/submissions/{id}/grading-snapshot |
+| | | | getExamCore | GET /internal/v1/exams/{examId}/core |
+| | | | getExamScale | GET /internal/v1/exams/{examId}/scale |
+| | | | isAssignedTo | GET /internal/v1/submissions/{submissionId}/assignments/check?graderId=... |
+| Result/Review | SubmissionClient | Submission | getStatus, getAnonymizedAccess, updateStatus | như trên |
+| | | | markFinalized | POST /internal/v1/submissions/{id}/finalize |
+| Result/Review | IdentityClient | Identity/Pseudonym | getIdentity | GET /internal/v1/submissions/{id}/identity |

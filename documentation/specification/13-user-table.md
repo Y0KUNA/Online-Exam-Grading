@@ -1,6 +1,7 @@
 # 13. Người dùng và giám khảo (Identity DB)
 
 > Phiên bản: 1.0 | Ngày: 2026-10-03 | Chủ sở hữu dữ liệu: **Identity/Pseudonym Service**
+> Cập nhật 2026-10-27: COUNCIL được xem `graderId` (D-16, ADR-016).
 > Schema gốc do chủ dự án tạo (`sql/identity/V1__users_graders.sql`). Các chỉnh sửa đề xuất nằm ở `sql/identity/V2__users_hardening.sql`.
 
 ## 1. Mô hình
@@ -38,7 +39,7 @@ erDiagram
 | ID dùng chung | **`users.user_id`** là định danh người dùng ở mọi nơi: `sub` trong JWT, `grader_id` trong `GradingAssignment/GradingAttempt`, `decided_by`, `confirmed_by`, `changed_by`, `actor_id` trong `audit_log`, `exam_grader.user_id`. |
 | `graders.grader_id` | Chỉ là khóa chính nội bộ của bảng hồ sơ. **Không** đưa ra API công khai, internal API hay DB service khác, để tránh hai loại ID cùng gọi là "grader id". |
 | Ranh giới | Chỉ Identity Service có credential vào `users`/`graders`. Service khác lấy tên/trạng thái qua `POST /internal/v1/users/lookup`. |
-| Che danh tính giám khảo | COUNCIL chỉ thấy nhãn `GK1..GKn` / `CL1..CLn`. Không trả `userId`, họ tên, mã giáo viên của giám khảo cho COUNCIL (D-16). GRADER không xem được thông tin giám khảo khác. |
+| Danh tính giám khảo với COUNCIL | COUNCIL thấy nhãn `GK1..GKn` / `CL1..CLn` **kèm `graderId` (= `users.user_id`)** của từng lượt chấm (D-16, ADR-016). Không trả `username`, họ tên, mã giáo viên cho COUNCIL (xem Q-16). GRADER không xem được thông tin giám khảo khác. |
 | Không xóa cứng | Không có `DELETE user`. Ngừng dùng bằng `is_active=false`, vì user đã xuất hiện trong assignment/attempt/audit. |
 | Retention | Tài khoản và hồ sơ **không** bị purge (không phải dữ liệu chi tiết bài thi, FR-025). |
 

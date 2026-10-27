@@ -2,6 +2,7 @@
 
 > Mỗi test phải được tự động hóa (JUnit + Testcontainers: PostgreSQL, RabbitMQ, MinIO). Agent không được báo "xong" một work package nếu test của nó chưa xanh.
 > Ký hiệu: `[FR/BR]` = truy vết requirements. Số liệu điểm dùng BigDecimal.
+> Cập nhật 2026-10-27: đồng bộ với D-11 (bulk tất cả hoặc không), D-16 (COUNCIL xem `graderId`) và Q-04 (nội bộ `grader-flag`).
 
 ## A. Phân quyền và ẩn danh (ưu tiên cao nhất)
 
@@ -11,8 +12,8 @@
 | AT-A02 | GRADER gọi `files/ANONYMIZED/access` trực tiếp → 403 (phải dùng attempt context) | D-09 |
 | AT-A03 | GRADER mở `context` của attempt thuộc grader khác → 403 `RESOURCE_FORBIDDEN` | FR-023 |
 | AT-A04 | Quét toàn bộ response JSON của mọi endpoint GRADER/COUNCIL: không có `candidateId, candidateNumber, fullName, className` | BR-006/007 |
-| AT-A05 | COUNCIL và EO `GET /reviews` thấy **mọi loại** Review; COUNCIL không thấy danh tính thí sinh, không thấy URL ORIGINAL; response có nhãn GK/CL | FR-017, D-13, D-16 |
-| AT-A12 | Response gửi COUNCIL không chứa `userId`, `username`, họ tên, `employeeCode` của giám khảo; chỉ có nhãn GK/CL | D-16 |
+| AT-A05 | COUNCIL và EO `GET /reviews` thấy **mọi loại** Review; COUNCIL không thấy danh tính thí sinh, không thấy URL ORIGINAL; response có nhãn GK/CL và `graderId` | FR-017, D-13, D-16 |
+| AT-A12 | Response gửi COUNCIL có `graderId` (= `users.user_id`) và nhãn GK/CL cho từng lượt chấm, nhưng không chứa `username`, họ tên, `employeeCode` của giám khảo và không chứa danh tính thí sinh | D-16 |
 | AT-A13 | GRADER và COUNCIL gọi `/api/v1/users/**` (trừ `/me`, `change-password`) → 403 | D-14 |
 | AT-A14 | `POST /reviews/{id}/decision` và `…/council-decision` bởi EXAM_OFFICE hoặc GRADER → 403; chỉ COUNCIL | D-13 |
 | AT-A06 | Gọi `/internal/**` qua Gateway → 404; gọi trực tiếp service thiếu/sai `X-Service-Signature` → 401/403 | D-02 |
@@ -74,8 +75,9 @@
 
 | ID | Kịch bản | Truy vết |
 |---|---|---|
-| AT-E01 | Bulk assign: bài chưa READY bị từ chối **từng dòng** (docx 2.3.5), response 201 `{created:[...],rejected:[{submissionId,code:"NOT_READY_FOR_GRADING"}]}`; các bài hợp lệ vẫn được giao (D-11) | FR-012 |
+| AT-E01 | Bulk assign **tất cả hoặc không**: có bài chưa `READY_FOR_GRADING` → 422 `NOT_READY_FOR_GRADING`, `details.submissionIds` liệt kê đúng các bài vi phạm, **không** tạo assignment nào; danh sách hợp lệ → 201 `{created:[...]}` (D-11) | FR-012 |
 | AT-E02 | Cross bật, `graderIds` ≠ `graderCount` → 422 `GRADER_COUNT_MISMATCH` | FR-012 |
+| AT-E02b | `graderIds` có phần tử trùng → 422 `GRADER_DUPLICATED`, không tạo assignment nào | FR-012 |
 | AT-E03 | `SINGLE_REVIEW` trên submission không phải REVIEW_REQUIRED → 409 `NOT_IN_REVIEW` | BR-019 |
 | AT-E04 | Điểm `<0` hoặc `>max` → 422 `SCORE_OUT_OF_RANGE`; thiếu câu bắt buộc khi confirm → 422 `MISSING_REQUIRED_SCORE` | BR-008 |
 | AT-E05 | Sau CONFIRMED, PUT điểm → 409; confirm lặp → 200 idempotent | FR-014 |
@@ -114,10 +116,12 @@ Ma trận (D-13, D-21; `10-implementation-spec.md` §3.2): **Hội đồng quy�
 | AT-F08 | EO gọi `retry`/`replace-file`/`assignments` (SINGLE_REVIEW) khi Review chưa `ACTION_AUTHORIZED`, hoặc đúng trạng thái nhưng sai hành động (vd cho `REPROCESS` mà gọi `force`) → 409 `REVIEW_NOT_AUTHORIZED`, không đổi gì | E-17 |
 | AT-F09 | `ANONYMIZATION`/`TEMPLATE_MASK_ERROR`: `REPROCESS` → EO `retry {step:ANONYMIZE,reviewId}` → `ANONYMIZING`, Review `RESOLVED(REPROCESS)`; `FORCE_ANONYMIZE` cho loại này → 422 | T18 |
 | AT-F10 | `GRADER_FLAG` + `DISMISS` → `RESOLVED`, bài `GRADING`, Result đánh giá lại ngay (đủ lượt thì sang `COMPLETED`) | T15a |
-| AT-F11 | `GRADER_FLAG` + `REGRADE` → `ACTION_AUTHORIZED`; EO chọn `graderId` và tạo SINGLE_REVIEW kèm `reviewId` → bài `GRADING`, lượt mới `attemptNo` tăng, `is_regrade=true`, lượt cũ giữ nguyên; response gửi COUNCIL không có `graderId`/tên giám khảo | T15b, D-16 |
+| AT-F11 | `GRADER_FLAG` + `REGRADE` → `ACTION_AUTHORIZED`; EO chọn `graderId` và tạo SINGLE_REVIEW kèm `reviewId` → bài `GRADING`, lượt mới `attemptNo` tăng, `is_regrade=true`, lượt cũ giữ nguyên; response gửi COUNCIL có `graderId` nhưng không có tên giám khảo | T15b, D-16 |
 | AT-F12 | Lượt chấm lại `CONFIRMED` → bài về `REVIEW_REQUIRED`, Review về `OPEN` có `regrade_attempt_id`; lúc này chỉ `SET_FINAL_SCORE` hợp lệ (`DISMISS`/`REGRADE` → 422); Hội đồng thấy mọi lượt (nhãn GK/CL) | T26 |
 | AT-F13 | `retry` trên FAILED `UPLOAD_ABANDONED`, `PDF_CORRUPT` hoặc `PAGE_COUNT_INVALID` → 409 (hai loại sau dùng thay file); `retry` trên FAILED `*_RETRY_EXHAUSTED` chạy được **không cần** `reviewId` | T19 |
-| AT-F14 | `GRADER_FLAG` thứ hai khi đã có Review chưa đóng → 200 `{reviewId,merged:true}`, không tạo Review mới; Hội đồng thấy ghi chú gắn nhãn `GKi`, không thấy tên | D-21, E-16 |
+| AT-F14 | `GRADER_FLAG` thứ hai khi đã có Review chưa đóng → 200 `{reviewId,merged:true}`, không tạo Review mới; Hội đồng thấy ghi chú gắn nhãn `GKi` và `graderId`, không thấy tên | D-21, E-16 |
+| AT-F14b | Điểm câu `needsReview=true` kèm `note` không rỗng → Exam & Grading ghi outbox, Result nhận `grader-flag` → Review `GRADER_FLAG` `OPEN` + `REVIEW_REQUIRED` + SSE (như AT-F02); relay gửi lặp cùng `Idempotency-Key` không tạo Review thứ hai | Q-04, BR-018 |
+| AT-F14c | `needsReview=true` không có `note` → không tạo Review, trạng thái không đổi, `needsReview` vẫn được lưu | Q-04 |
 
 ### Phúc khảo (REMARK), gồm cả sau FINALIZED
 
@@ -300,7 +304,7 @@ Ma trận (D-13, D-21; `10-implementation-spec.md` §3.2): **Hội đồng quy�
 | AT-Q01 | EO `anonymization-issues` trên bài `READY_FOR_GRADING` → 201, Review `ANONYMIZATION`/`MASK_INSUFFICIENT` `OPEN`, bài `REVIEW_REQUIRED`, SSE; `reason` được lưu và Hội đồng thấy trong chi tiết Review | T27 |
 | AT-Q02 | Bài ở trạng thái khác (`UPLOADING`, `VALIDATING`, `GRADING`, `COMPLETED`, `FINALIZED`, `FAILED`…) → 409 `INVALID_STATE`; `reason` trống → 422; đã có Review chưa đóng → 409 `REVIEW_ALREADY_OPEN`; GRADER/COUNCIL gọi → 403 | D-24 |
 | AT-Q03 | Gọi lại cùng `Idempotency-Key` → cùng `reviewId`, không tạo Review thứ hai; crash giữa tạo Review và đổi status → gọi lại hoàn tất, không dư Review | idempotency |
-| AT-Q04 | Bài đã `REVIEW_REQUIRED` do T27 không thể bulk-assign (vào `rejected[]`); sau `DISMISS` thì giao được | D-11 |
+| AT-Q04 | Bài đã `REVIEW_REQUIRED` do T27 không thể bulk-assign (422 `NOT_READY_FOR_GRADING`, không tạo assignment nào); sau `DISMISS` thì giao được | D-11 |
 | AT-Q05 | Hội đồng `DISMISS` → `RESOLVED(DISMISS)`, bài về `READY_FOR_GRADING`, `ExamFile` ANONYMIZED không đổi; `DISMISS` với Review `TEMPLATE_SIZE_MISMATCH`/`TEMPLATE_MASK_ERROR` → 422 `DECISION_NOT_ALLOWED` | T28, AT-F04 |
 | AT-Q06 | Hội đồng `REPROCESS` → `ACTION_AUTHORIZED`, bài vẫn `REVIEW_REQUIRED`; EO `retry` đúng `reviewId` → `ANONYMIZING` → `READY_FOR_GRADING`; Review `RESOLVED(REPROCESS)` | T18 |
 | AT-Q07 | **Ghi đè**: sau `REPROCESS` object ANONYMIZED **cùng key** có nội dung mới, `ExamFile.sha256`/`size_bytes` cập nhật, ORIGINAL SHA-256 không đổi; worker **không** bỏ qua vì object đã tồn tại; job gửi trùng (cùng `jobId`) chỉ chạy một lần | §8, §4.6 |

@@ -3,8 +3,8 @@ services:
     image: postgres:17
     environment:
       POSTGRES_DB: identity_db
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: identity_db
+      POSTGRES_PASSWORD: 12345678
     volumes: [identity-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -15,8 +15,8 @@ services:
     image: postgres:17
     environment:
       POSTGRES_DB: submission_db
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: submission_db
+      POSTGRES_PASSWORD: 12345678
     volumes: [submission-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -29,7 +29,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_DB: exam_grading_db
-      POSTGRES_USER: exam_grading
+      POSTGRES_USER: exam_grading_db
       POSTGRES_PASSWORD: 12345678
     volumes: [exam-grading-data:/var/lib/postgresql/data]
     healthcheck:
@@ -41,8 +41,8 @@ services:
     image: postgres:17
     environment:
       POSTGRES_DB: result_review_db
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: result_review_db
+      POSTGRES_PASSWORD: 12345678
     volumes: [result-review-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]

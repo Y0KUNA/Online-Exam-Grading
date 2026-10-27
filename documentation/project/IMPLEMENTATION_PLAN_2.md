@@ -20,6 +20,50 @@
 
 Đã có scaffold Gradle, Compose/Gateway/MinIO, HMAC/idempotency/outbox primitive, login/JWKS, một phần schema Identity, create exam/question/rubric, internal submission status, topology RabbitMQ, schema assignment/review/final result, council decision, export CSV và frontend demo. Các phần này chưa được coi là xong cho đến khi đi qua test/acceptance bên dưới.
 
+### Tiến độ đã xác nhận từ mã nguồn và nhật ký cũ
+
+Ký hiệu: `[x]` = đã có và đủ phạm vi của mục nhỏ nêu dưới đây; `[~]` = đã có một phần nhưng **chưa** được tính hoàn thành ticket/đợt; `[ ]` = chưa bắt đầu hoặc chưa có bằng chứng.
+
+**Đợt 0**
+
+- [x] Scaffold Gradle multi-module, Gradle Wrapper, Dockerfile/Compose cho Gateway, 4 service, PostgreSQL, RabbitMQ và MinIO.
+- [x] `common`: HMAC, replay guard, idempotency, cursor, audit redaction và primitive outbox có mặt; một phần có unit test.
+- [x] Gateway chặn `/internal/**`, có storage allowlist, lọc header nhạy cảm, correlation ID và rate limit.
+- [x] Đã từng chạy thành công full Gradle test, Compose config và smoke Compose (nhật ký 2026-10-13).
+- [~] Storage GET qua Gateway, including Range/URL hết hạn, đã được smoke; POST 50 MiB và full automation AT-N01–N12 còn thiếu.
+- [ ] Bốn internal contract ở F0-06 chưa được chốt/kiểm thử trọn bộ.
+
+**Đợt 1**
+
+- [x] Identity có login, `/users/me`, đổi/reset password, tạo user, JWKS và bootstrap admin.
+- [x] Candidate search và import **CSV** từng dòng, có trả danh sách lỗi từng dòng.
+- [x] Exam có create, thêm question, tạo rubric draft và activate rubric cần `confirmed=true`.
+- [~] Login/account lockout, roster import XLSX, user CRUD đầy đủ, binding/pseudonym, exam update/close, validate rubric điểm và grader registry chưa đạt ticket tương ứng.
+
+**Đợt 2**
+
+- [x] Flyway đã có bảng lõi PaperTemplate, Submission, ExamFile, ProcessingJob và state enum; internal status transition có HMAC/caller allowlist cơ bản.
+- [~] Thiếu init/complete upload, outbox VALIDATE, SSE, cleanup và replace-file hoàn chỉnh; do đó chưa tick S2-01–S2-08.
+
+**Đợt 3**
+
+- [x] Khai báo exchange `submission.processing`, hai durable queue `validate`/`anonymize` và hai DLQ riêng.
+- [~] Consumer hiện là khung; chưa có PDF validation, PageMasker, retry/reconciler, pseudonym và preview nên chưa tick P3-01–P3-08.
+
+**Đợt 4**
+
+- [x] Migration đã khai báo bảng lõi assignment/attempt/question-score và unique constraint assignment.
+- [ ] Chưa có assignment, grading attempt, score/confirm và outbox hand-off hoàn chỉnh.
+
+**Đợt 5**
+
+- [x] Migration đã có Review, CouncilDecision, FinalResult và index chỉ một review mở; có read projection, council decision endpoint và export CSV read-only.
+- [~] Chưa có evaluate/consume attempt, full workflow review, finalize saga, ghép phách hay kiểm thử quyền đầy đủ; không tick R5-01–R5-08.
+
+**Đợt 6**
+
+- [ ] Remark, retention purge liên service, CI acceptance, backup/restore drill và release checklist chưa có bằng chứng hoàn tất.
+
 ## 3. Cổng theo đợt
 
 | Đợt (5 ngày) | Demo bắt buộc | Acceptance/cổng chính |

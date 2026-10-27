@@ -21,6 +21,6 @@ Each service owns its migration directory and database; never use another servic
 
 1. Copy `.env.example` to `.env` and replace every secret.
 2. Start the local stack (including the public Gateway) with `docker compose --env-file .env up -d --build`.
-3. Build all modules with `./gradlew.bat build` on Windows (Java 21 required).
+3. Start Frontend demo with `npm run dev` in frontend-demo folder
 
 The modules are intentionally a production-oriented scaffold: API and domain packages are present, but business endpoints are added work-package by work-package from the implementation specification.

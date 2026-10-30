@@ -70,7 +70,7 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain security(HttpSecurity http, JwtDecoder decoder) throws Exception {
         http.csrf(csrf -> csrf.disable()).authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/auth/login", "/.well-known/jwks.json", "/actuator/health", "/actuator/info")
+                .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register/grader", "/.well-known/jwks.json", "/actuator/health", "/actuator/info")
                 .permitAll()
                 .anyRequest().authenticated())
                 .oauth2ResourceServer(

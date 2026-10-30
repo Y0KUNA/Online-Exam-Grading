@@ -17,6 +17,10 @@ public class AuthController {
     private final IdentityAuthService auth;
     public AuthController(IdentityAuthService auth) { this.auth = auth; }
     @PostMapping("/auth/login") public LoginResponse login(@Valid @RequestBody LoginRequest request) { return auth.login(request); }
+    @PostMapping("/auth/register/grader")
+    public ResponseEntity<UserCredentialsResponse> registerGrader(@Valid @RequestBody RegisterGraderRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(auth.registerGrader(request));
+    }
     @GetMapping("/users/me") public UserResponse me(@AuthenticationPrincipal Jwt jwt) { return UserResponse.from(auth.me(UUID.fromString(jwt.getSubject()))); }
     @PostMapping("/users/me/change-password") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ChangePasswordRequest request) { auth.changePassword(UUID.fromString(jwt.getSubject()), request.currentPassword(), request.newPassword()); }

@@ -15,6 +15,7 @@ import vn.edu.examgrading.identity.domain.UserRole;
 import vn.edu.examgrading.identity.dto.LoginRequest;
 import vn.edu.examgrading.identity.dto.LoginResponse;
 import vn.edu.examgrading.identity.dto.RegisterUserRequest;
+import vn.edu.examgrading.identity.dto.RegisterGraderRequest;
 import vn.edu.examgrading.identity.dto.UserCredentialsResponse;
 import vn.edu.examgrading.identity.dto.UserResponse;
 import vn.edu.examgrading.identity.repository.UserAccountRepository;
@@ -67,15 +68,22 @@ public class IdentityAuthService {
         UserAccount created = users.save(new UserAccount(username, passwordEncoder.encode(password), fullName, email, request.role(), mustChangePassword));
         return new UserCredentialsResponse(UserResponse.from(created), temporaryPassword, created.mustChangePassword());
     }
+    /** Public self-service registration is deliberately limited to graders. */
+    @Transactional public UserCredentialsResponse registerGrader(RegisterGraderRequest request) {
+        if (request == null) throw new IllegalArgumentException("request is required");
+        return register(new RegisterUserRequest(request.username(), request.fullName(), request.email(), UserRole.GRADER, request.password()));
+    }
     @Transactional public UserCredentialsResponse resetPassword(UUID userId) {
         UserAccount user = users.findById(userId).orElseThrow(UserNotFoundException::new);
         String temporaryPassword = generateTemporaryPassword();
         user.resetPassword(passwordEncoder.encode(temporaryPassword), true);
         return new UserCredentialsResponse(UserResponse.from(user), temporaryPassword, true);
     }
-    @Transactional public void bootstrap(String username, String password) {
-        if (username == null || username.isBlank() || password == null || password.length() < 8 || users.countByRoleAndActiveTrue(UserRole.EXAM_OFFICE) > 0) return;
-        users.save(new UserAccount(username.trim(), passwordEncoder.encode(password), username.trim(), null, UserRole.EXAM_OFFICE, true));
+    @Transactional public void bootstrapSingleton(UserRole role, String username, String password, String fullName) {
+        if ((role != UserRole.EXAM_OFFICE && role != UserRole.COUNCIL)
+            || username == null || username.isBlank() || password == null || password.length() < 8 || users.existsByRole(role)) return;
+        String name = fullName == null || fullName.isBlank() ? username.trim() : fullName.trim();
+        users.save(new UserAccount(username.trim(), passwordEncoder.encode(password), name, null, role, true));
     }
     @Transactional public void changePassword(UUID id, String currentPassword, String newPassword) {
         if (newPassword == null || newPassword.length() < 8) throw new IllegalArgumentException("password must contain at least 8 characters");

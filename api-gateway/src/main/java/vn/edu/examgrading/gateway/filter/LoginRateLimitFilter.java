@@ -13,7 +13,7 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-/** Protects the one public credential endpoint before it reaches Identity. */
+/** Protects public credential endpoints before they reach Identity. */
 @Component
 public final class LoginRateLimitFilter implements WebFilter, Ordered {
     private final int requestsPerMinute;
@@ -21,7 +21,9 @@ public final class LoginRateLimitFilter implements WebFilter, Ordered {
     private final Clock clock = Clock.systemUTC();
     public LoginRateLimitFilter(Environment env) { requestsPerMinute = env.getProperty("app.login.rate-limit-per-minute", Integer.class, 10); }
     @Override public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        if (exchange.getRequest().getMethod() != HttpMethod.POST || !"/api/v1/auth/login".equals(exchange.getRequest().getPath().value())) return chain.filter(exchange);
+        String path = exchange.getRequest().getPath().value();
+        if (exchange.getRequest().getMethod() != HttpMethod.POST
+            || (!"/api/v1/auth/login".equals(path) && !"/api/v1/auth/register/grader".equals(path))) return chain.filter(exchange);
         long minute = clock.millis() / 60_000L;
         String key = String.valueOf(exchange.getRequest().getRemoteAddress()) + ':' + minute;
         Counter counter = counters.compute(key, (ignored, value) -> value == null || value.minute != minute ? new Counter(minute) : value);

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import "./rubric.css";
-import { mockData } from "./mockData";
 import { gradingApi } from "./api";
 
 const formatDateTime = (value) =>
@@ -16,96 +15,21 @@ const submissionStatusLabel = {
   REVIEW_REQUIRED: 'Cần xử lý',
   COMPLETED: 'Đã chấm',
 };
-const getExamSummary = (examId) => {
-  const submissions = mockData.submissions.filter((item) => item.examId === examId);
-  return {
-    candidates: mockData.candidates.filter((item) => item.examId === examId).length,
-    submitted: submissions.length,
-    graded: submissions.filter((item) => item.status === 'COMPLETED').length,
-    issues: mockData.reviews.filter((item) => item.examId === examId && item.status !== 'RESOLVED').length,
-  };
-};
-const getExams = () => mockData.exams.map((item) => ({
+const getExams = (items) => items.map((item) => ({
   ...item,
   id: item.examCode,
   time: formatDateTime(item.examTime),
   day: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(item.examTime)),
   month: `THG ${new Intl.DateTimeFormat('vi-VN', { month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(item.examTime))}`,
   classes: item.gradeLevel,
-  ...getExamSummary(item.examId),
+  candidates: item.candidateCount ?? 0,
+  submitted: item.submittedCount ?? 0,
+  graded: item.gradedCount ?? 0,
+  issues: item.reviewCount ?? 0,
 }));
-const scoreBySubmission = { 'c08bc820-66a5-4bd3-8e1a-000000000001': '8.50', 'c08bc820-66a5-4bd3-8e1a-000000000004': '7.75' };
-const studentRows = (examId) => mockData.candidates.filter((candidate) => candidate.examId === examId).map((candidate) => {
-  const pseudonym = mockData.pseudonyms.find((item) => item.candidateId === candidate.candidateId);
-  const submission = pseudonym && mockData.submissions.find((item) => item.submissionId === pseudonym.submissionId);
-  if (!submission) return ['—', candidate.fullName, candidate.candidateNumber, '—', 'Chưa upload bài', '—', '—'];
-  const review = mockData.reviews.find((item) => item.submissionId === submission.submissionId);
-  return [pseudonym.value, candidate.fullName, candidate.candidateNumber, formatDateTime(submission.updatedAt), submissionStatusLabel[submission.status], review?.reason ?? '—', scoreBySubmission[submission.submissionId] ?? '—'];
-});
-const paperRows = (examId) => mockData.submissions.filter((submission) => submission.examId === examId).map((submission) => {
-  const pseudonym = mockData.pseudonyms.find((item) => item.submissionId === submission.submissionId);
-  const assignment = mockData.assignments.find((item) => item.submissionId === submission.submissionId);
-  const attempt = assignment && mockData.attempts.find((item) => item.assignmentId === assignment.assignmentId);
-  const scores = attempt ? mockData.questionScores.filter((item) => item.attemptId === attempt.attemptId) : [];
-  const byQuestion = (questionId) => scores.find((item) => item.questionId === questionId)?.score?.toFixed(2) ?? '—';
-  const total = scores.length ? scores.reduce((sum, item) => sum + item.score, 0).toFixed(2) : '—';
-  return [pseudonym?.value ?? '—', byQuestion(mockData.questions[0].questionId), byQuestion(mockData.questions[1].questionId), byQuestion(mockData.questions[2].questionId), total, assignment?.status === 'IN_PROGRESS' ? 'Đang chấm' : submissionStatusLabel[submission.status]];
-});
-const reviewRows = (examId) => mockData.reviews.filter((review) => review.examId === examId).map((review) => {
-  const pseudonym = mockData.pseudonyms.find((item) => item.submissionId === review.submissionId);
-  const decision = mockData.councilDecisions.find((item) => item.reviewId === review.reviewId);
-  return [pseudonym?.value ?? '—', '7.00', '9.00', decision ? decision.finalScore.toFixed(2) : '—', review.status === 'RESOLVED' ? `Đã xử lý · ${review.reason}` : review.reason];
-});
-const rubric = [
-  {
-    question: mockData.questions[0].content,
-    points: mockData.criteria[0].maxScore,
-    criterion: mockData.criteria[0].label,
-    detail: mockData.criteria[0].description,
-    scores: [
-      "Nêu đúng vấn đề, triển khai rõ ràng và có lập luận thuyết phục.",
-      "Nêu đúng vấn đề nhưng triển khai chưa đầy đủ.",
-      "Nêu được ý chính nhưng lập luận còn hạn chế.",
-      "Không xác định được hoặc xác định sai vấn đề.",
-    ],
-  },
-  {
-    question: mockData.questions[0].content,
-    points: mockData.criteria[1].maxScore,
-    criterion: mockData.criteria[1].label,
-    detail: mockData.criteria[1].description,
-    scores: [
-      "Phân tích sâu, dẫn chứng phù hợp và diễn đạt mạch lạc.",
-      "Phân tích được các ý chính, có dẫn chứng.",
-      "Có ý phân tích nhưng chưa rõ hoặc thiếu dẫn chứng.",
-      "Không có phân tích hoặc lập luận không phù hợp.",
-    ],
-  },
-  {
-    question: mockData.questions[1].content,
-    points: mockData.criteria[2].maxScore,
-    criterion: mockData.criteria[2].label,
-    detail: mockData.criteria[2].description,
-    scores: [
-      "Nêu đúng, đầy đủ các yếu tố; ví dụ phù hợp.",
-      "Nêu được phần lớn yếu tố, còn một vài thiếu sót.",
-      "Nêu được một số yếu tố nhưng chưa đầy đủ.",
-      "Không nêu được các yếu tố cần thiết.",
-    ],
-  },
-  {
-    question: mockData.questions[2].content,
-    points: mockData.criteria[3].maxScore,
-    criterion: mockData.criteria[3].label,
-    detail: mockData.criteria[3].description,
-    scores: [
-      "Bố cục rõ ràng, diễn đạt chính xác, không lỗi chính tả.",
-      "Trình bày rõ, có ít lỗi nhỏ.",
-      "Diễn đạt còn rời rạc hoặc có lỗi.",
-      "Trình bày thiếu rõ ràng, nhiều lỗi.",
-    ],
-  },
-];
+const paperRows = (submissions) => submissions.map((submission) => [submission.pseudonym ?? submission.pseudonymValue ?? '—', '—', '—', '—', submission.totalScore?.toFixed?.(2) ?? '—', submissionStatusLabel[submission.status] ?? submission.status ?? 'Chưa chấm']);
+const reviewRows = (reviews) => reviews.map((review) => [review.pseudonym ?? review.pseudonymValue ?? '—', review.graderOneScore?.toFixed?.(2) ?? '—', review.graderTwoScore?.toFixed?.(2) ?? '—', review.finalScore?.toFixed?.(2) ?? '—', review.reason ?? review.status ?? '—']);
+const rubric = [];
 const statusClass = (s) =>
   s
     .normalize("NFD")
@@ -156,7 +80,7 @@ function Info({ exam }) {
       </div>
       <div>
         <span>Chấm chéo</span>
-        <b>02 giám khảo · ngưỡng 1.00</b>
+        <b>{exam.crossGradingEnabled ? `${exam.graderCount} giám khảo · ngưỡng ${Number(exam.differenceThreshold ?? 0).toFixed(2)}` : "Không chấm chéo"}</b>
       </div>
     </div>
   );
@@ -177,10 +101,24 @@ function Modal({ title, close, children }) {
     </div>
   );
 }
-function Login({ onLogin }) {
-  const [error, setError] = useState(""); const [loading, setLoading] = useState(false);
-  const submit = async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); setLoading(true); setError(""); try { await onLogin({ username: form.get("username"), password: form.get("password") }); } catch (cause) { setError(cause.message); } finally { setLoading(false); } };
-  return <div className="overlay"><div className="modal"><div className="modal-head"><div><p className="crumb">EXAMGRADER</p><h2>Đăng nhập để kiểm thử API</h2></div></div><form className="form" onSubmit={submit}><div className="form-grid"><label>Tên đăng nhập<input name="username" required autoFocus /></label><label>Mật khẩu<input name="password" required type="password" /></label></div>{error && <p className="form-error">{error}</p>}<div className="actions"><Button type="submit" disabled={loading}>{loading ? "Đang đăng nhập…" : "Đăng nhập"}</Button></div></form></div></div>;
+const accessTypes = {
+  office: { apiRole: "EXAM_OFFICE", icon: "▦", title: "Phòng khảo thí", detail: "Quản lý kỳ thi, danh sách thí sinh và kết quả." },
+  council: { apiRole: "COUNCIL", icon: "♙", title: "Hội đồng chấm thi", detail: "Rà soát chênh lệch và quyết định điểm chốt." },
+  grader: { apiRole: "GRADER", icon: "✎", title: "Giám khảo", detail: "Nhận phân công và chấm bài độc lập." },
+};
+function Login({ onLogin, onRegister }) {
+  const [mode, setMode] = useState("login"), [error, setError] = useState(""), [notice, setNotice] = useState(""), [loading, setLoading] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget); setLoading(true); setError(""); setNotice("");
+    try {
+      if (mode === "register") {
+        if (form.get("password") !== form.get("confirmPassword")) throw new Error("Mật khẩu xác nhận chưa khớp.");
+        await onRegister({ username: form.get("username"), fullName: form.get("fullName"), email: form.get("email"), password: form.get("password") });
+        setNotice("Đăng ký thành công. Hãy đăng nhập bằng tài khoản Giám khảo của bạn."); setMode("login"); event.currentTarget.reset();
+      } else await onLogin({ username: form.get("username"), password: form.get("password") });
+    } catch (cause) { setError(cause.message); } finally { setLoading(false); }
+  };
+  return <div className="auth-page"><section className="auth-intro"><div className="auth-brand"><b>EG</b><span>ExamGrader</span></div><p className="crumb">HỆ THỐNG SỐ HÓA & CHẤM THI TỰ LUẬN</p><h1>{mode === "register" ? "Đăng ký tài khoản Giám khảo" : "Một cổng đăng nhập cho toàn hệ thống"}</h1><p>{mode === "register" ? "Tài khoản Giám khảo được dùng để nhận phân công và chấm bài độc lập." : "Đăng nhập bằng tài khoản được cấp. Hệ thống tự nhận diện vai trò và đưa bạn đến không gian làm việc phù hợp."}</p></section><section className="auth-panel"><div className="auth-panel-inner"><p className="crumb">{mode === "register" ? "TẠO TÀI KHOẢN" : "ĐĂNG NHẬP HỆ THỐNG"}</p><h2>{mode === "register" ? "Thông tin Giám khảo" : "Chào mừng trở lại"}</h2><p className="auth-caption">{mode === "register" ? "Chỉ Giám khảo có thể tự đăng ký. Phòng khảo thí và Hội đồng dùng tài khoản do hệ thống cấp." : "Sau khi xác thực, bạn sẽ tự động được chuyển đến giao diện theo đúng quyền của mình."}</p><form className="auth-form" onSubmit={submit}>{mode === "register" && <><label>Họ và tên<input name="fullName" required autoFocus placeholder="Nguyễn Văn A" /></label><label>Email<input name="email" type="email" placeholder="giaokhao@truong.edu.vn" /></label></>}<label>Tên đăng nhập<input name="username" required autoFocus={mode === "login"} placeholder="Nhập tên đăng nhập" /></label><label>Mật khẩu<input name="password" required type="password" minLength="8" placeholder="Tối thiểu 8 ký tự" /></label>{mode === "register" && <label>Xác nhận mật khẩu<input name="confirmPassword" required type="password" minLength="8" placeholder="Nhập lại mật khẩu" /></label>}{notice && <p className="success">✓ {notice}</p>}{error && <p className="form-error">{error}</p>}<Button type="submit" disabled={loading}>{loading ? "Đang xử lý…" : mode === "register" ? "Tạo tài khoản Giám khảo" : "Đăng nhập"}</Button></form>{mode === "login" ? <button type="button" className="auth-link" onClick={() => { setMode("register"); setError(""); }}>Chưa có tài khoản? <b>Đăng ký Giám khảo</b></button> : <button type="button" className="auth-link" onClick={() => { setMode("login"); setError(""); }}>← Quay lại đăng nhập</button>}</div></section></div>;
 }
 function SetupExam({ examId, close, refresh }) {
   const [message, setMessage] = useState(""); const [error, setError] = useState("");
@@ -390,10 +328,9 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
       .finally(() => { if (!aborter.signal.aborted) setCandidatesLoading(false); });
     return () => aborter.abort();
   }, [exam.examId, revision]);
-  const rows = candidates.map((candidate) => {
-    const mockRow = studentRows(exam.examId).find((row) => row[2] === candidate.candidateNumber);
-    return mockRow ?? ['—', candidate.fullName, candidate.candidateNumber, '—', 'Chưa upload bài', '—', '—'];
-  }).map((row) =>
+  const rows = candidates.map((candidate) =>
+    ['—', candidate.fullName, candidate.candidateNumber, '—', 'Chưa upload bài', '—', '—']
+  ).map((row) =>
     uploadedCandidates[row[2]]
       ? [row[0], row[1], row[2], 'Vừa tải lên', 'Đã nộp', row[5], row[6]]
       : row,
@@ -612,8 +549,8 @@ function Finalize({ back }) {
     </>
   );
 }
-function GraderHome({ exam, open }) {
-  const assignedCount = paperRows(exam.examId).length;
+function GraderHome({ exam, submissions, open }) {
+  const assignedCount = paperRows(submissions).length;
   return (
     <>
       <Header crumb="GIÁM KHẢO · BÀI ĐƯỢC PHÂN CÔNG" title="Kỳ thi cần chấm">
@@ -652,8 +589,8 @@ function GraderHome({ exam, open }) {
     </>
   );
 }
-function PaperList({ exam, back, grade }) {
-  const papers = paperRows(exam.examId);
+function PaperList({ exam, submissions, back, grade }) {
+  const papers = paperRows(submissions);
   const completedCount = papers.filter((row) => row[5] === 'Đã chấm').length;
   return (
     <>
@@ -691,7 +628,7 @@ function PaperList({ exam, back, grade }) {
               "Trạng thái",
               "",
             ]}
-            rows={paperRows(exam.examId)}
+            rows={papers}
             statusAt={5}
             action={(r) => (
               <Button className="link" onClick={grade}>
@@ -935,8 +872,8 @@ function CouncilHome({ open, exams }) {
     </>
   );
 }
-function CouncilExam({ exam, back, grade }) {
-  const pendingReviewCount = exam.issues;
+function CouncilExam({ exam, reviews, back, grade }) {
+  const pendingReviewCount = reviews.length;
   return (
     <>
       <Header crumb="HỘI ĐỒNG / KỲ THI" title="Kết quả chấm & rà soát">
@@ -974,7 +911,7 @@ function CouncilExam({ exam, back, grade }) {
               "Kết quả / vấn đề",
               "",
             ]}
-            rows={reviewRows(exam.examId)}
+            rows={reviewRows(reviews)}
             issueAt={4}
             action={(r) => (
               <Button className="link" onClick={grade}>
@@ -988,33 +925,63 @@ function CouncilExam({ exam, back, grade }) {
   );
 }
 function App() {
-  const [role, setRole] = useState("office"),
+  const [role, setRole] = useState(() => {
+      try {
+        const token = sessionStorage.getItem("exam-grading.access-token");
+        const apiRole = token && JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role;
+        return apiRole === "GRADER" ? "grader" : apiRole === "COUNCIL" ? "council" : "office";
+      } catch { return "office"; }
+    }),
     [page, setPage] = useState("home"),
     [creating, setCreating] = useState(false),
-    [selectedExamId, setSelectedExamId] = useState(mockData.exams[0]?.examId),
+    [selectedExamId, setSelectedExamId] = useState(null),
+    [examItems, setExamItems] = useState([]),
+    [submissions, setSubmissions] = useState([]),
+    [reviews, setReviews] = useState([]),
     [apiError, setApiError] = useState(""),
     [loading, setLoading] = useState(true),
     [revision, setRevision] = useState(0),
     [authToken, setAuthToken] = useState(() => sessionStorage.getItem("exam-grading.access-token")),
+    [user, setUser] = useState(null),
     [configuring, setConfiguring] = useState(false);
-  const exams = useMemo(getExams, [revision]);
+  const exams = useMemo(() => getExams(examItems), [examItems]);
   const selectedExam = exams.find((item) => item.examId === selectedExamId) ?? exams[0];
   useEffect(() => {
     const aborter = new AbortController();
     gradingApi.listExams({ signal: aborter.signal })
-      .then((payload) => {
+      .then(async (payload) => {
         const items = Array.isArray(payload) ? payload : payload.items ?? payload.content ?? [];
-        if (items.length) { mockData.exams = items; setSelectedExamId((current) => current ?? items[0].examId); setRevision((value) => value + 1); }
+        const enriched = await Promise.all(items.map(async (exam) => {
+          const calls = [gradingApi.listSubmissions(exam.examId), gradingApi.listReviews(exam.examId)];
+          if (role === "office") calls.unshift(gradingApi.listCandidates(exam.examId));
+          const results = await Promise.all(calls);
+          const candidates = role === "office" ? (Array.isArray(results[0]) ? results[0] : results[0].items ?? []) : null;
+          const submissions = results[role === "office" ? 1 : 0];
+          const reviews = results[role === "office" ? 2 : 1];
+          const submissionItems = Array.isArray(submissions) ? submissions : submissions.items ?? [];
+          const reviewItems = Array.isArray(reviews) ? reviews : reviews.items ?? [];
+          return { ...exam, candidateCount: candidates?.length ?? exam.candidateCount ?? 0, submittedCount: submissionItems.length, gradedCount: submissionItems.filter((item) => item.status === "COMPLETED").length, reviewCount: reviewItems.filter((item) => item.status !== "RESOLVED").length };
+        }));
+        setExamItems(enriched); setSelectedExamId((current) => current ?? enriched[0]?.examId ?? null);
         setApiError("");
       })
-      .catch((cause) => { if (cause.name !== "AbortError") setApiError("Không thể tải dữ liệu máy chủ; đang hiển thị dữ liệu minh họa."); })
+      .catch((cause) => { if (cause.name !== "AbortError") { setExamItems([]); setApiError("Không thể tải dữ liệu từ máy chủ."); } })
       .finally(() => setLoading(false));
     return () => aborter.abort();
-  }, [authToken]);
-  const login = async (credentials) => { const response = await gradingApi.login(credentials); sessionStorage.setItem("exam-grading.access-token", response.accessToken); setAuthToken(response.accessToken); const role = JSON.parse(atob(response.accessToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))).role; setRole(role === "EXAM_OFFICE" ? "office" : role === "GRADER" ? "grader" : "council"); };
+  }, [authToken, role]);
+  const login = async (credentials) => {
+    const response = await gradingApi.login(credentials);
+    const tokenRole = JSON.parse(atob(response.accessToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))).role;
+    const workspace = tokenRole === "GRADER" ? "grader" : tokenRole === "COUNCIL" ? "council" : tokenRole === "EXAM_OFFICE" ? "office" : null;
+    if (!workspace) throw new Error("Tài khoản không có vai trò hợp lệ trong hệ thống.");
+    sessionStorage.setItem("exam-grading.access-token", response.accessToken); setAuthToken(response.accessToken); setRole(workspace);
+    try { setUser(await gradingApi.me({ token: response.accessToken })); } catch { setUser(null); }
+  };
+  const registerGrader = (registration) => gradingApi.registerGrader(registration);
+  const logout = () => { sessionStorage.removeItem("exam-grading.access-token"); setAuthToken(null); setUser(null); setPage("home"); };
   const createExam = async (form, rosterFile) => {
     const created = await gradingApi.createExam(form);
-    mockData.exams = [created, ...mockData.exams];
+    setExamItems((items) => [created, ...items]);
     setSelectedExamId(created.examId); setRevision((value) => value + 1);
     return rosterFile ? gradingApi.importRoster(created.examId, rosterFile) : null;
   };
@@ -1030,9 +997,8 @@ function App() {
     const aborter = new AbortController();
     Promise.all([gradingApi.listSubmissions(selectedExamId, { signal: aborter.signal }), gradingApi.listReviews(selectedExamId, { signal: aborter.signal })])
       .then(([submissions, reviews]) => {
-        mockData.submissions = Array.isArray(submissions) ? submissions : submissions.items ?? [];
-        mockData.reviews = Array.isArray(reviews) ? reviews : reviews.items ?? [];
-        setRevision((value) => value + 1);
+        setSubmissions(Array.isArray(submissions) ? submissions : submissions.items ?? []);
+        setReviews(Array.isArray(reviews) ? reviews : reviews.items ?? []);
       })
       .catch((cause) => { if (cause.name !== "AbortError") setApiError("Một số dữ liệu chi tiết chưa tải được từ API."); });
     return () => aborter.abort();
@@ -1041,12 +1007,8 @@ function App() {
     setSelectedExamId(examId);
     setPage("exam");
   };
-  const change = (r) => {
-    setRole(r);
-    setPage("home");
-    setCreating(false);
-  };
-  let view =
+  const noExamView = <><Header crumb="DỮ LIỆU KỲ THI" title="Chưa có kỳ thi" /><main className="content"><section className="table-box"><h2>Chưa có dữ liệu để hiển thị</h2><p>Danh sách kỳ thi sẽ xuất hiện tại đây khi máy chủ có dữ liệu phù hợp với quyền của bạn.</p></section></main></>;
+  let view = !selectedExam && role !== "office" ? noExamView :
     role === "office" ? (
       page === "home" ? (
         <OfficeHome exams={exams}
@@ -1067,10 +1029,11 @@ function App() {
       )
     ) : role === "grader" ? (
       page === "home" ? (
-        <GraderHome exam={selectedExam} open={() => setPage("papers")} />
+          <GraderHome exam={selectedExam} submissions={submissions} open={() => setPage("papers")} />
       ) : page === "papers" ? (
         <PaperList
           exam={selectedExam}
+          submissions={submissions}
           back={() => setPage("home")}
           grade={() => setPage("grade")}
         />
@@ -1082,12 +1045,14 @@ function App() {
     ) : page === "exam" ? (
       <CouncilExam
         exam={selectedExam}
+        reviews={reviews}
         back={() => setPage("home")}
         grade={() => setPage("grade")}
       />
     ) : (
       <Grading council back={() => setPage("exam")} />
     );
+  if (!authToken) return <Login onLogin={login} onRegister={registerGrader} />;
   return (
     <div className="app">
       <aside>
@@ -1099,26 +1064,7 @@ function App() {
           </div>
         </div>
         <p className="side-label">KHÔNG GIAN LÀM VIỆC</p>
-        <nav>
-          <button
-            className={role === "office" ? "active" : ""}
-            onClick={() => change("office")}
-          >
-            ▦　Phòng khảo thí
-          </button>
-          <button
-            className={role === "grader" ? "active" : ""}
-            onClick={() => change("grader")}
-          >
-            ✎　Giám khảo
-          </button>
-          <button
-            className={role === "council" ? "active" : ""}
-            onClick={() => change("council")}
-          >
-            ♙　Hội đồng chấm thi
-          </button>
-        </nav>
+        <nav><button className="active">{accessTypes[role].icon}　{accessTypes[role].title}</button></nav>
         <div className="help">
           ?{" "}
           <span>
@@ -1132,11 +1078,7 @@ function App() {
           </span>
           <div>
             <b>
-              {role === "grader"
-                ? "Lê Hoàng"
-                : role === "council"
-                  ? "Phạm Minh"
-                  : "Nguyễn Thảo"}
+              {user?.fullName ?? (role === "grader" ? "Giám khảo" : role === "council" ? "Hội đồng chấm thi" : "Phòng khảo thí")}
             </b>
             <small>
               {role === "grader"
@@ -1146,6 +1088,7 @@ function App() {
                   : "Phòng khảo thí"}
             </small>
           </div>
+          <button className="logout" onClick={logout}>Đăng xuất</button>
         </div>
       </aside>
       <div className="main">{view}</div>
@@ -1153,7 +1096,6 @@ function App() {
       {apiError && <div className="api-state warning">{apiError}</div>}
       {creating && <CreateModal onCreated={createExam} close={() => setCreating(false)} />}
       {configuring && <SetupExam examId={selectedExamId} close={() => setConfiguring(false)} refresh={() => setRevision((value) => value + 1)} />}
-      {!authToken && <Login onLogin={login} />}
     </div>
   );
 }

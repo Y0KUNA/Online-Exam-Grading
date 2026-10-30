@@ -16,3 +16,7 @@ app.auth:
   login-lock-minutes: ${LOGIN_LOCK_MINUTES:15}
   bootstrap-username: ${BOOTSTRAP_ADMIN_USERNAME:}
   bootstrap-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+  bootstrap-office-name: ${BOOTSTRAP_OFFICE_NAME:Phòng khảo thí}
+  bootstrap-council-username: ${BOOTSTRAP_COUNCIL_USERNAME:}
+  bootstrap-council-password: ${BOOTSTRAP_COUNCIL_PASSWORD:}
+  bootstrap-council-name: ${BOOTSTRAP_COUNCIL_NAME:Hội đồng chấm thi}

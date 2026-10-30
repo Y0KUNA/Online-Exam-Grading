@@ -44,6 +44,8 @@ async function upload(path, file, { token = storedToken(), signal } = {}) {
 
 export const gradingApi = {
   login: (credentials) => api("/api/v1/auth/login", { method: "POST", body: credentials }),
+  registerGrader: (registration) => api("/api/v1/auth/register/grader", { method: "POST", body: registration }),
+  me: (options) => api("/api/v1/users/me", options),
   listExams: (options) => api("/api/v1/exams", options),
   createExam: (exam, options) => api("/api/v1/exams", { ...options, method: "POST", body: exam }),
   addQuestion: (examId, question, options) => api(`/api/v1/exams/${examId}/questions`, { ...options, method: "POST", body: question }),

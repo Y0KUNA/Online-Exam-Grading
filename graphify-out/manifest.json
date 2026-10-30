@@ -437,12 +437,6 @@
     "ast_hash": "04271d88cdfa0fc481fd7590a99d6ac8",
     "semantic_hash": "04271d88cdfa0fc481fd7590a99d6ac8"
   },
-  "frontend-demo/src/api.js": {
-    "mtime": 1793240845.9242017,
-    "seen": 1793352137.2962947,
-    "ast_hash": "938f1aa233d05b373cbcc6e06c4b0c74",
-    "semantic_hash": "938f1aa233d05b373cbcc6e06c4b0c74"
-  },
   "frontend-demo/src/main.jsx": {
     "mtime": 1791468960.9059744,
     "seen": 1793352137.2962954,

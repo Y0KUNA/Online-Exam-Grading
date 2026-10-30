@@ -1,0 +1,18 @@
+{
+  "0": "CorrelationIdFilter",
+  "1": "SecurityConfig.java",
+  "3": "CursorCodec",
+  "6": "InternalSubmissionController.java",
+  "10": "UserAccount",
+  "15": ".filter",
+  "17": "RabbitMqConfig",
+  "18": "StorageAccessFilterTest.java",
+  "19": "GatewaySecurityConfig.java",
+  "20": "ExamService",
+  "24": "LoginRateLimitFilter",
+  "26": "uuid",
+  "28": "StorageRateLimitFilter",
+  "32": "FoundationPrimitivesTest.java",
+  "36": "CandidateController.java",
+  "56": "services"
+}

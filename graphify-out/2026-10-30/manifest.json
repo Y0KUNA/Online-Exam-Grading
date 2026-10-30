@@ -1,0 +1,890 @@
+{
+  ".codex/hooks.json": {
+    "mtime": 1793351676.025046,
+    "seen": 1793352137.296236,
+    "ast_hash": "5ebef3dd159986e465ab65e4014107ec",
+    "semantic_hash": "5ebef3dd159986e465ab65e4014107ec"
+  },
+  "api-gateway/build.gradle": {
+    "mtime": 1791863987.894035,
+    "seen": 1793352137.2962415,
+    "ast_hash": "4fb527d2f03a1757969883e602223815",
+    "semantic_hash": "4fb527d2f03a1757969883e602223815"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/ApiGatewayApplication.java": {
+    "mtime": 1791207522.8033018,
+    "seen": 1793352137.2962437,
+    "ast_hash": "52e371f5f86ed1b310173f260ddde40d",
+    "semantic_hash": "52e371f5f86ed1b310173f260ddde40d"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/config/GatewaySecurityConfig.java": {
+    "mtime": 1793262945.9530225,
+    "seen": 1793352137.2962446,
+    "ast_hash": "960a5fd743e3cc414cffffb8f6f7fcba",
+    "semantic_hash": "960a5fd743e3cc414cffffb8f6f7fcba"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/filter/CorrelationIdFilter.java": {
+    "mtime": 1791888460.737024,
+    "seen": 1793352137.2962456,
+    "ast_hash": "da999adc29d62642e2fd4a92ddfd652c",
+    "semantic_hash": "da999adc29d62642e2fd4a92ddfd652c"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/filter/InternalPathNotFoundFilter.java": {
+    "mtime": 1791257621.1742163,
+    "seen": 1793352137.2962463,
+    "ast_hash": "9db16266db1935d420e480bb25b710f4",
+    "semantic_hash": "9db16266db1935d420e480bb25b710f4"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/filter/LoginRateLimitFilter.java": {
+    "mtime": 1793262945.954261,
+    "seen": 1793352137.2962472,
+    "ast_hash": "9c0b56a0e8bf4651ea23ecda20a8efed",
+    "semantic_hash": "9c0b56a0e8bf4651ea23ecda20a8efed"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/filter/MinioPathNotFoundFilter.java": {
+    "mtime": 1791864217.9073853,
+    "seen": 1793352137.296248,
+    "ast_hash": "febd0851423f766fea5112a14256b368",
+    "semantic_hash": "febd0851423f766fea5112a14256b368"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/filter/RequestLoggingFilter.java": {
+    "mtime": 1791888461.8678505,
+    "seen": 1793352137.2962487,
+    "ast_hash": "2030bd11fce93cba60ae9999b2713567",
+    "semantic_hash": "2030bd11fce93cba60ae9999b2713567"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/filter/StorageAccessFilter.java": {
+    "mtime": 1791864372.2370045,
+    "seen": 1793352137.2962494,
+    "ast_hash": "fa43d7dff08b74a52cc9b90c52d4feda",
+    "semantic_hash": "fa43d7dff08b74a52cc9b90c52d4feda"
+  },
+  "api-gateway/src/main/java/vn/edu/examgrading/gateway/filter/StorageRateLimitFilter.java": {
+    "mtime": 1791863651.4266994,
+    "seen": 1793352137.29625,
+    "ast_hash": "91cf2f4a6db44f44a60e8e73ce70365c",
+    "semantic_hash": "91cf2f4a6db44f44a60e8e73ce70365c"
+  },
+  "api-gateway/src/main/resources/application.yml": {
+    "mtime": 1793108379.2227967,
+    "seen": 1793352137.296251,
+    "ast_hash": "7cc2772749c91f3d2d702456de238aff",
+    "semantic_hash": "7cc2772749c91f3d2d702456de238aff"
+  },
+  "api-gateway/src/test/java/vn/edu/examgrading/gateway/filter/CorrelationIdFilterTest.java": {
+    "mtime": 1791815228.8608532,
+    "seen": 1793352137.296252,
+    "ast_hash": "b911b18551341836e84424515ee98d05",
+    "semantic_hash": "b911b18551341836e84424515ee98d05"
+  },
+  "api-gateway/src/test/java/vn/edu/examgrading/gateway/filter/InternalPathNotFoundFilterTest.java": {
+    "mtime": 1791257623.728016,
+    "seen": 1793352137.2962527,
+    "ast_hash": "e130df71d9cafa63c009cbc7c2fe84af",
+    "semantic_hash": "e130df71d9cafa63c009cbc7c2fe84af"
+  },
+  "api-gateway/src/test/java/vn/edu/examgrading/gateway/filter/StorageAccessFilterTest.java": {
+    "mtime": 1791856759.2745595,
+    "seen": 1793352137.2962532,
+    "ast_hash": "3b648e18439e1c6791014ad67a81a2ad",
+    "semantic_hash": "3b648e18439e1c6791014ad67a81a2ad"
+  },
+  "build.gradle": {
+    "mtime": 1791859302.039915,
+    "seen": 1793352137.296254,
+    "ast_hash": "0d0e3518a96423cff7f4d0fcef139684",
+    "semantic_hash": "0d0e3518a96423cff7f4d0fcef139684"
+  },
+  "common/build.gradle": {
+    "mtime": 1791257558.911594,
+    "seen": 1793352137.2962546,
+    "ast_hash": "bdadfadcc0b71dac563bfb2df9228b92",
+    "semantic_hash": "bdadfadcc0b71dac563bfb2df9228b92"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/ApiError.java": {
+    "mtime": 1791207529.932137,
+    "seen": 1793352137.2962554,
+    "ast_hash": "e0c7b2bd1bda5a2c1a684158305ff596",
+    "semantic_hash": "e0c7b2bd1bda5a2c1a684158305ff596"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/Headers.java": {
+    "mtime": 1791859303.081748,
+    "seen": 1793352137.296256,
+    "ast_hash": "96c9a976564ea0fc8b623d854a276da7",
+    "semantic_hash": "96c9a976564ea0fc8b623d854a276da7"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/api/ApiError.java": {
+    "mtime": 1791257618.606644,
+    "seen": 1793352137.2962565,
+    "ast_hash": "d2daf9300966b4cc8a2267be281a819f",
+    "semantic_hash": "d2daf9300966b4cc8a2267be281a819f"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/api/CursorCodec.java": {
+    "mtime": 1791257561.489185,
+    "seen": 1793352137.2962573,
+    "ast_hash": "0c84c6cfc37b455ad96271b5438e3e5d",
+    "semantic_hash": "0c84c6cfc37b455ad96271b5438e3e5d"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/api/CursorPage.java": {
+    "mtime": 1791257560.8483112,
+    "seen": 1793352137.296258,
+    "ast_hash": "f619c8ce1ba1d29aa81ae11a24c08d0e",
+    "semantic_hash": "f619c8ce1ba1d29aa81ae11a24c08d0e"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/api/GlobalExceptionHandler.java": {
+    "mtime": 1791859415.5209148,
+    "seen": 1793352137.2962592,
+    "ast_hash": "667134efdbb53254b94f48a2273132ef",
+    "semantic_hash": "667134efdbb53254b94f48a2273132ef"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/audit/AuditEntry.java": {
+    "mtime": 1791257564.0237558,
+    "seen": 1793352137.2962599,
+    "ast_hash": "cd1db376a7b52c06ac17b7fa0436430a",
+    "semantic_hash": "cd1db376a7b52c06ac17b7fa0436430a"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/audit/AuditLogger.java": {
+    "mtime": 1791257564.652842,
+    "seen": 1793352137.2962604,
+    "ast_hash": "08ce37bc90df45283f9d3e5fe05fcc87",
+    "semantic_hash": "08ce37bc90df45283f9d3e5fe05fcc87"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/audit/RedactingAuditLogger.java": {
+    "mtime": 1791859302.306338,
+    "seen": 1793352137.296261,
+    "ast_hash": "25e870636392efc827d9f104a6ed7948",
+    "semantic_hash": "25e870636392efc827d9f104a6ed7948"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/idempotency/IdempotencyExecutor.java": {
+    "mtime": 1791859302.568463,
+    "seen": 1793352137.2962618,
+    "ast_hash": "211a00e2680c8c508381a67387e08e99",
+    "semantic_hash": "211a00e2680c8c508381a67387e08e99"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/idempotency/IdempotencyRecord.java": {
+    "mtime": 1791257566.547334,
+    "seen": 1793352137.2962627,
+    "ast_hash": "dd3c919f15e0dd9c183fb99c1f2b83c3",
+    "semantic_hash": "dd3c919f15e0dd9c183fb99c1f2b83c3"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/idempotency/IdempotencyStore.java": {
+    "mtime": 1791257567.1827433,
+    "seen": 1793352137.2962632,
+    "ast_hash": "7469a2677961f475955c32c0efb01051",
+    "semantic_hash": "7469a2677961f475955c32c0efb01051"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/idempotency/InMemoryIdempotencyStore.java": {
+    "mtime": 1791856523.198298,
+    "seen": 1793352137.2962637,
+    "ast_hash": "eda784e439c514708aa7e2b4677ce228",
+    "semantic_hash": "eda784e439c514708aa7e2b4677ce228"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/logging/SensitiveDataRedactor.java": {
+    "mtime": 1791257574.1804962,
+    "seen": 1793352137.2962644,
+    "ast_hash": "a9e5d06d61e04758513b7ccb8496b2db",
+    "semantic_hash": "a9e5d06d61e04758513b7ccb8496b2db"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/outbox/IdempotentConsumer.java": {
+    "mtime": 1791882082.0359778,
+    "seen": 1793352137.2962651,
+    "ast_hash": "ceae0e5b659c60c62fa17e9d83714e82",
+    "semantic_hash": "ceae0e5b659c60c62fa17e9d83714e82"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/outbox/InMemoryOutbox.java": {
+    "mtime": 1791856523.4919374,
+    "seen": 1793352137.296266,
+    "ast_hash": "beae1f06df491a0d05153307d6a25056",
+    "semantic_hash": "beae1f06df491a0d05153307d6a25056"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/outbox/OutboxMessage.java": {
+    "mtime": 1791257569.1078477,
+    "seen": 1793352137.2962668,
+    "ast_hash": "437b986dcd89ca0c3d560e339d0c5afa",
+    "semantic_hash": "437b986dcd89ca0c3d560e339d0c5afa"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/outbox/OutboxPublisher.java": {
+    "mtime": 1791257569.742915,
+    "seen": 1793352137.2962675,
+    "ast_hash": "f806f36017a90f7e8d61fdfd1092ed91",
+    "semantic_hash": "f806f36017a90f7e8d61fdfd1092ed91"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/outbox/OutboxRelay.java": {
+    "mtime": 1791859302.8488572,
+    "seen": 1793352137.296268,
+    "ast_hash": "0f87495ff17b221e39678e21911ad5e1",
+    "semantic_hash": "0f87495ff17b221e39678e21911ad5e1"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/HmacSigner.java": {
+    "mtime": 1791856522.1210477,
+    "seen": 1793352137.2962687,
+    "ast_hash": "b9bf98af6ea8289e81f87b7a60d7480f",
+    "semantic_hash": "b9bf98af6ea8289e81f87b7a60d7480f"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/InMemoryReplayGuard.java": {
+    "mtime": 1791856522.902591,
+    "seen": 1793352137.2962697,
+    "ast_hash": "c40f07709403203de07ab4f0137a9f7f",
+    "semantic_hash": "c40f07709403203de07ab4f0137a9f7f"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/InternalRequestVerifier.java": {
+    "mtime": 1791882082.261986,
+    "seen": 1793352137.2962701,
+    "ast_hash": "a51385a82fc7890a74360f73379f5b7f",
+    "semantic_hash": "a51385a82fc7890a74360f73379f5b7f"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/ReplayGuard.java": {
+    "mtime": 1791257572.2610936,
+    "seen": 1793352137.2962708,
+    "ast_hash": "e232b15a96d0a9d71856c5faf34cc3c1",
+    "semantic_hash": "e232b15a96d0a9d71856c5faf34cc3c1"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/ServiceRequestSigner.java": {
+    "mtime": 1791882081.5432343,
+    "seen": 1793352137.2962716,
+    "ast_hash": "c7e9d8a7749aded290a93addad1ff386",
+    "semantic_hash": "c7e9d8a7749aded290a93addad1ff386"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/ServiceRequestVerifier.java": {
+    "mtime": 1791882081.776621,
+    "seen": 1793352137.2962723,
+    "ast_hash": "9eea2105e2472f082579ab1516fa9575",
+    "semantic_hash": "9eea2105e2472f082579ab1516fa9575"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/SignedServiceRequest.java": {
+    "mtime": 1791882081.2680044,
+    "seen": 1793352137.296273,
+    "ast_hash": "679addb433d0ec71c3fa17b6dfb63020",
+    "semantic_hash": "679addb433d0ec71c3fa17b6dfb63020"
+  },
+  "common/src/main/java/vn/edu/examgrading/common/security/SignedUserContext.java": {
+    "mtime": 1791856522.395824,
+    "seen": 1793352137.296274,
+    "ast_hash": "e14815d513df59b957d7c7bfbeed64d5",
+    "semantic_hash": "e14815d513df59b957d7c7bfbeed64d5"
+  },
+  "common/src/test/java/vn/edu/examgrading/common/FoundationPrimitivesTest.java": {
+    "mtime": 1791882153.6209679,
+    "seen": 1793352137.2962747,
+    "ast_hash": "71077988a3b2afab0dc1ae60ea294fee",
+    "semantic_hash": "71077988a3b2afab0dc1ae60ea294fee"
+  },
+  "common/src/test/java/vn/edu/examgrading/common/api/CursorCodecTest.java": {
+    "mtime": 1791257576.0341034,
+    "seen": 1793352137.2962754,
+    "ast_hash": "8548712c3d8dbf71273db88e0362066d",
+    "semantic_hash": "8548712c3d8dbf71273db88e0362066d"
+  },
+  "common/src/test/java/vn/edu/examgrading/common/security/HmacSignerTest.java": {
+    "mtime": 1791257577.896844,
+    "seen": 1793352137.2962763,
+    "ast_hash": "f63e651ef356cda97ccdb9b0e7b21158",
+    "semantic_hash": "f63e651ef356cda97ccdb9b0e7b21158"
+  },
+  "deploy/docker-compose.yml": {
+    "mtime": 1793244843.6736875,
+    "seen": 1793352137.296277,
+    "ast_hash": "cc24798ce5368db12b0f077cc7a0bcdc",
+    "semantic_hash": "cc24798ce5368db12b0f077cc7a0bcdc"
+  },
+  "docker-compose.yml": {
+    "mtime": 1791207868.7432053,
+    "seen": 1793352137.2962775,
+    "ast_hash": "e68f696f0d522aef8f224d3ac67396e1",
+    "semantic_hash": "e68f696f0d522aef8f224d3ac67396e1"
+  },
+  "documentation/contracts/openapi/gateway.yaml": {
+    "mtime": 1793108379.2237985,
+    "seen": 1793352137.2962782,
+    "ast_hash": "165ed4dfeb1f06d515a6d2087648e482",
+    "semantic_hash": "165ed4dfeb1f06d515a6d2087648e482"
+  },
+  "documentation/specification/source/requirements-ver1_2.json": {
+    "mtime": 1790977020.0,
+    "seen": 1793352137.296279,
+    "ast_hash": "f6edd59ed889a295bb91f225945d72e9",
+    "semantic_hash": "f6edd59ed889a295bb91f225945d72e9"
+  },
+  "documentation/specification/sql/identity/V1__users_graders.sql": {
+    "mtime": 1790995064.0,
+    "seen": 1793352137.2962797,
+    "ast_hash": "e6e1ca49868d61c2bdac5b4cb414449a",
+    "semantic_hash": "e6e1ca49868d61c2bdac5b4cb414449a"
+  },
+  "documentation/specification/sql/identity/V2__users_hardening.sql": {
+    "mtime": 1790995064.0,
+    "seen": 1793352137.2962804,
+    "ast_hash": "ccedc56eef7839894d8b96f435f3f5b3",
+    "semantic_hash": "ccedc56eef7839894d8b96f435f3f5b3"
+  },
+  "exam-grading-service/build.gradle": {
+    "mtime": 1791863652.2817137,
+    "seen": 1793352137.2962809,
+    "ast_hash": "663fd59c2b57decd5448dc57156d0c6e",
+    "semantic_hash": "663fd59c2b57decd5448dc57156d0c6e"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/ExamGradingServiceApplication.java": {
+    "mtime": 1793108379.2287965,
+    "seen": 1793352137.2962816,
+    "ast_hash": "e8b575394cfa6deb4e13220075d133d4",
+    "semantic_hash": "e8b575394cfa6deb4e13220075d133d4"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/client/SubmissionClient.java": {
+    "mtime": 1791207741.8449547,
+    "seen": 1793352137.2962823,
+    "ast_hash": "946d9ffbf4b95413e6a74e5bef3a29b2",
+    "semantic_hash": "946d9ffbf4b95413e6a74e5bef3a29b2"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/config/DocxConfig.java": {
+    "mtime": 1791207731.067301,
+    "seen": 1793352137.2962828,
+    "ast_hash": "3bddd3d7b6e16728d379923d8771c3fc",
+    "semantic_hash": "3bddd3d7b6e16728d379923d8771c3fc"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/controller/ExamController.java": {
+    "mtime": 1793108379.229797,
+    "seen": 1793352137.2962837,
+    "ast_hash": "ee4d7671c25c5f383e1be553d29c33b0",
+    "semantic_hash": "ee4d7671c25c5f383e1be553d29c33b0"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/domain/ExamStatus.java": {
+    "mtime": 1791207734.6642818,
+    "seen": 1793352137.2962844,
+    "ast_hash": "ebc1d7cb33b72e765775d7da9bb5189d",
+    "semantic_hash": "ebc1d7cb33b72e765775d7da9bb5189d"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/dto/CreateExamRequest.java": {
+    "mtime": 1793108379.229797,
+    "seen": 1793352137.296285,
+    "ast_hash": "09e7c248ae70ce9a23e253b6d38d3335",
+    "semantic_hash": "09e7c248ae70ce9a23e253b6d38d3335"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/repository/ExamRepositoryMarker.java": {
+    "mtime": 1791207738.2187438,
+    "seen": 1793352137.2962856,
+    "ast_hash": "282b0457a8b9c638bcc6d0fdeafbc5b9",
+    "semantic_hash": "282b0457a8b9c638bcc6d0fdeafbc5b9"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/repository/JdbcExamRepository.java": {
+    "mtime": 1793108379.229797,
+    "seen": 1793352137.2962866,
+    "ast_hash": "054ebd09d9897c7266114ce12895f63b",
+    "semantic_hash": "054ebd09d9897c7266114ce12895f63b"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/service/ExamService.java": {
+    "mtime": 1793108379.229797,
+    "seen": 1793352137.296287,
+    "ast_hash": "2c01539ca80c7bf79a8adbe1cda4c815",
+    "semantic_hash": "2c01539ca80c7bf79a8adbe1cda4c815"
+  },
+  "exam-grading-service/src/main/java/vn/edu/examgrading/examgrading/service/GradingServiceMarker.java": {
+    "mtime": 1791207740.0175543,
+    "seen": 1793352137.2962878,
+    "ast_hash": "1806892002737f228b6f518fe8496232",
+    "semantic_hash": "1806892002737f228b6f518fe8496232"
+  },
+  "exam-grading-service/src/main/resources/application-test.yml": {
+    "mtime": 1791859337.1431136,
+    "seen": 1793352137.2962885,
+    "ast_hash": "fb58d3e62dd07b60f8625a5076003dda",
+    "semantic_hash": "fb58d3e62dd07b60f8625a5076003dda"
+  },
+  "exam-grading-service/src/main/resources/application.yml": {
+    "mtime": 1791859385.2120655,
+    "seen": 1793352137.296289,
+    "ast_hash": "ac5ba1ec4b41b4b8b812423c2dcf7379",
+    "semantic_hash": "ac5ba1ec4b41b4b8b812423c2dcf7379"
+  },
+  "exam-grading-service/src/main/resources/db/migration/V1__baseline.sql": {
+    "mtime": 1791207745.4371805,
+    "seen": 1793352137.2962897,
+    "ast_hash": "d22240d60616a59bc19bc7f48ab859fe",
+    "semantic_hash": "d22240d60616a59bc19bc7f48ab859fe"
+  },
+  "exam-grading-service/src/main/resources/db/migration/V2__exam_core.sql": {
+    "mtime": 1793108379.229797,
+    "seen": 1793352137.2962906,
+    "ast_hash": "63254ec53a8a11a8f00f74a7f3568fd2",
+    "semantic_hash": "63254ec53a8a11a8f00f74a7f3568fd2"
+  },
+  "exam-grading-service/src/main/resources/db/migration/V3__rubric.sql": {
+    "mtime": 1793108379.2307966,
+    "seen": 1793352137.2962914,
+    "ast_hash": "b1117cfa9ec044b982fa724e965ae8e1",
+    "semantic_hash": "b1117cfa9ec044b982fa724e965ae8e1"
+  },
+  "exam-grading-service/src/test/java/vn/edu/examgrading/examgrading/service/ExamServiceTest.java": {
+    "mtime": 1793108379.2307966,
+    "seen": 1793352137.2962918,
+    "ast_hash": "152feac58d8ec39693e9e174203df96d",
+    "semantic_hash": "152feac58d8ec39693e9e174203df96d"
+  },
+  "frontend-demo/.oxlintrc.json": {
+    "mtime": 1791468960.897302,
+    "seen": 1793352137.2962925,
+    "ast_hash": "5e6e3cea3e89137071c142dd7835b0ef",
+    "semantic_hash": "5e6e3cea3e89137071c142dd7835b0ef"
+  },
+  "frontend-demo/package.json": {
+    "mtime": 1791468971.0234075,
+    "seen": 1793352137.296293,
+    "ast_hash": "11ff21deece328f3b45e68f4a0a2bd83",
+    "semantic_hash": "11ff21deece328f3b45e68f4a0a2bd83"
+  },
+  "frontend-demo/src/App.jsx": {
+    "mtime": 1793246125.199938,
+    "seen": 1793352137.296294,
+    "ast_hash": "04271d88cdfa0fc481fd7590a99d6ac8",
+    "semantic_hash": "04271d88cdfa0fc481fd7590a99d6ac8"
+  },
+  "frontend-demo/src/api.js": {
+    "mtime": 1793240845.9242017,
+    "seen": 1793352137.2962947,
+    "ast_hash": "938f1aa233d05b373cbcc6e06c4b0c74",
+    "semantic_hash": "938f1aa233d05b373cbcc6e06c4b0c74"
+  },
+  "frontend-demo/src/main.jsx": {
+    "mtime": 1791468960.9059744,
+    "seen": 1793352137.2962954,
+    "ast_hash": "e13723e2574429d9a6d849727e3ff695",
+    "semantic_hash": "e13723e2574429d9a6d849727e3ff695"
+  },
+  "frontend-demo/vite.config.js": {
+    "mtime": 1793108379.2327964,
+    "seen": 1793352137.296296,
+    "ast_hash": "3ec505265d21993085a9250593c7f2b9",
+    "semantic_hash": "3ec505265d21993085a9250593c7f2b9"
+  },
+  "gradlew": {
+    "mtime": 1791257732.8344245,
+    "seen": 1793352137.2962966,
+    "ast_hash": "f092910dfa8e47c5a37a452c3f6baf8a",
+    "semantic_hash": "f092910dfa8e47c5a37a452c3f6baf8a"
+  },
+  "identity-service/build.gradle": {
+    "mtime": 1791885822.3085313,
+    "seen": 1793352137.2962973,
+    "ast_hash": "e874b8b922509257fa5ed37711d3fbe8",
+    "semantic_hash": "e874b8b922509257fa5ed37711d3fbe8"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/IdentityServiceApplication.java": {
+    "mtime": 1791207577.537881,
+    "seen": 1793352137.296298,
+    "ast_hash": "256c3d37824c42862d58bc080726255b",
+    "semantic_hash": "256c3d37824c42862d58bc080726255b"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/config/BootstrapAdmin.java": {
+    "mtime": 1793240696.4595017,
+    "seen": 1793352137.2962987,
+    "ast_hash": "dad87ff8c8a651adbe2c4b47ee9e78f7",
+    "semantic_hash": "dad87ff8c8a651adbe2c4b47ee9e78f7"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/config/JwtConfig.java": {
+    "mtime": 1791207579.3130076,
+    "seen": 1793352137.2962995,
+    "ast_hash": "dba1d3948394b43776218fff35229558",
+    "semantic_hash": "dba1d3948394b43776218fff35229558"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/config/RequestLoggingFilter.java": {
+    "mtime": 1791888631.2233784,
+    "seen": 1793352137.2963002,
+    "ast_hash": "4cd84b3d1879742bd7f7b5d323c5ac2c",
+    "semantic_hash": "4cd84b3d1879742bd7f7b5d323c5ac2c"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/config/SecurityConfig.java": {
+    "mtime": 1793240696.460501,
+    "seen": 1793352137.296301,
+    "ast_hash": "0a18470731ada3a99f62af165d7d6617",
+    "semantic_hash": "0a18470731ada3a99f62af165d7d6617"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/controller/AuthController.java": {
+    "mtime": 1793240845.9236991,
+    "seen": 1793352137.2963016,
+    "ast_hash": "ce04d34b38d72e7782b5d33acd245fb9",
+    "semantic_hash": "ce04d34b38d72e7782b5d33acd245fb9"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/controller/CandidateController.java": {
+    "mtime": 1793108379.2327964,
+    "seen": 1793352137.2963023,
+    "ast_hash": "3cc19cd5e46415825b6dc29f8379e028",
+    "semantic_hash": "3cc19cd5e46415825b6dc29f8379e028"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/controller/IdentityExceptionHandler.java": {
+    "mtime": 1791888461.4672499,
+    "seen": 1793352137.296303,
+    "ast_hash": "5861880ca3c50f803ccb02e10c3f96df",
+    "semantic_hash": "5861880ca3c50f803ccb02e10c3f96df"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/controller/JwksController.java": {
+    "mtime": 1791883328.5582893,
+    "seen": 1793352137.2963052,
+    "ast_hash": "11680266f08f504260263c64b7b524bf",
+    "semantic_hash": "11680266f08f504260263c64b7b524bf"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/domain/UserAccount.java": {
+    "mtime": 1791885482.4398992,
+    "seen": 1793352137.296306,
+    "ast_hash": "74f1b7bbcceead0d2c00c723e981590a",
+    "semantic_hash": "74f1b7bbcceead0d2c00c723e981590a"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/domain/UserRole.java": {
+    "mtime": 1791207582.8730638,
+    "seen": 1793352137.2963064,
+    "ast_hash": "19f5ccc440fade6f771787cd89819a46",
+    "semantic_hash": "19f5ccc440fade6f771787cd89819a46"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/dto/ChangePasswordRequest.java": {
+    "mtime": 1791883215.6724193,
+    "seen": 1793352137.296307,
+    "ast_hash": "4a059442dd8644eeb410ecbe937ec1d5",
+    "semantic_hash": "4a059442dd8644eeb410ecbe937ec1d5"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/dto/LoginRequest.java": {
+    "mtime": 1791207584.7061608,
+    "seen": 1793352137.2963078,
+    "ast_hash": "22890fbb6fd675ab7decdd77d4a49fa5",
+    "semantic_hash": "22890fbb6fd675ab7decdd77d4a49fa5"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/dto/LoginResponse.java": {
+    "mtime": 1791883215.1137052,
+    "seen": 1793352137.2963085,
+    "ast_hash": "19b4f6e517d6451c4f352f69ad61bd8f",
+    "semantic_hash": "19b4f6e517d6451c4f352f69ad61bd8f"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/dto/RegisterGraderRequest.java": {
+    "mtime": 1793240845.9221814,
+    "seen": 1793352137.2963092,
+    "ast_hash": "5c96f1867ed5106e6ee12f83808d18a3",
+    "semantic_hash": "5c96f1867ed5106e6ee12f83808d18a3"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/dto/RegisterUserRequest.java": {
+    "mtime": 1791883214.8322668,
+    "seen": 1793352137.2963097,
+    "ast_hash": "6e7fb94a745768e2a8168a442f007b75",
+    "semantic_hash": "6e7fb94a745768e2a8168a442f007b75"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/dto/UserCredentialsResponse.java": {
+    "mtime": 1791885482.441521,
+    "seen": 1793352137.2963104,
+    "ast_hash": "b1fdab7932e19ced2e3ce0cf2312015f",
+    "semantic_hash": "b1fdab7932e19ced2e3ce0cf2312015f"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/dto/UserResponse.java": {
+    "mtime": 1791883215.4092584,
+    "seen": 1793352137.2963114,
+    "ast_hash": "23e08df2b8c4f0ef2bdf307ab0b2b6b8",
+    "semantic_hash": "23e08df2b8c4f0ef2bdf307ab0b2b6b8"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/repository/UserAccountRepository.java": {
+    "mtime": 1793240696.4584982,
+    "seen": 1793352137.296312,
+    "ast_hash": "0232de1b1b01a9bc237b0fee06ab0e52",
+    "semantic_hash": "0232de1b1b01a9bc237b0fee06ab0e52"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/repository/UserRepositoryMarker.java": {
+    "mtime": 1791207586.540807,
+    "seen": 1793352137.2963126,
+    "ast_hash": "7392b5cfe542392e50cbdcabd96b84dc",
+    "semantic_hash": "7392b5cfe542392e50cbdcabd96b84dc"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/service/IdentityAuthService.java": {
+    "mtime": 1793240845.9221814,
+    "seen": 1793352137.2963133,
+    "ast_hash": "c392b218c59784a360dd14dfb69d567c",
+    "semantic_hash": "c392b218c59784a360dd14dfb69d567c"
+  },
+  "identity-service/src/main/java/vn/edu/examgrading/identity/service/IdentityServiceMarker.java": {
+    "mtime": 1791207588.3268619,
+    "seen": 1793352137.296314,
+    "ast_hash": "07720f03ac988c0ffbfc0e7c66ebd4d5",
+    "semantic_hash": "07720f03ac988c0ffbfc0e7c66ebd4d5"
+  },
+  "identity-service/src/main/resources/application-test.yml": {
+    "mtime": 1791859336.6067066,
+    "seen": 1793352137.2963147,
+    "ast_hash": "d22d6c08bad82a3e8e2416b4f661fe08",
+    "semantic_hash": "d22d6c08bad82a3e8e2416b4f661fe08"
+  },
+  "identity-service/src/main/resources/application.yml": {
+    "mtime": 1793240696.460501,
+    "seen": 1793352137.2963154,
+    "ast_hash": "27db9bfb5f974302db81a86d48aec94e",
+    "semantic_hash": "27db9bfb5f974302db81a86d48aec94e"
+  },
+  "identity-service/src/main/resources/db/migration/V1__baseline.sql": {
+    "mtime": 1793242831.646806,
+    "seen": 1793352137.296316,
+    "ast_hash": "cbabbd85dadf50c0163505dc903c9860",
+    "semantic_hash": "cbabbd85dadf50c0163505dc903c9860"
+  },
+  "identity-service/src/main/resources/db/migration/V2__users_graders.sql": {
+    "mtime": 1791883183.1353078,
+    "seen": 1793352137.2963166,
+    "ast_hash": "79feed6a11d3291b066f6deeb7ba6dde",
+    "semantic_hash": "79feed6a11d3291b066f6deeb7ba6dde"
+  },
+  "identity-service/src/main/resources/db/migration/V3__users_hardening.sql": {
+    "mtime": 1791883183.4100776,
+    "seen": 1793352137.2963173,
+    "ast_hash": "23d2a004e42055bcf44dd76d4d123452",
+    "semantic_hash": "23d2a004e42055bcf44dd76d4d123452"
+  },
+  "identity-service/src/main/resources/db/migration/V4__candidate_roster.sql": {
+    "mtime": 1793108379.2337961,
+    "seen": 1793352137.2963183,
+    "ast_hash": "bd214c8ce913dbf14c5ef83c1cdda1f6",
+    "semantic_hash": "bd214c8ce913dbf14c5ef83c1cdda1f6"
+  },
+  "identity-service/src/main/resources/db/migration/V5__singleton_privileged_roles.sql": {
+    "mtime": 1793240696.4615006,
+    "seen": 1793352137.296319,
+    "ast_hash": "315669bf2838f345d65623c2c1f307fb",
+    "semantic_hash": "315669bf2838f345d65623c2c1f307fb"
+  },
+  "identity-service/test-auth.ps1": {
+    "mtime": 1791887138.6544952,
+    "seen": 1793352137.2963197,
+    "ast_hash": "5b945a78d3902dbff0e1e8db7d88857d",
+    "semantic_hash": "5b945a78d3902dbff0e1e8db7d88857d"
+  },
+  "result-review-service/build.gradle": {
+    "mtime": 1791863652.5618055,
+    "seen": 1793352137.2963204,
+    "ast_hash": "663fd59c2b57decd5448dc57156d0c6e",
+    "semantic_hash": "663fd59c2b57decd5448dc57156d0c6e"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/ResultReviewServiceApplication.java": {
+    "mtime": 1791207747.2484002,
+    "seen": 1793352137.2963214,
+    "ast_hash": "f431d947f0c9166eca724be4a5a44b35",
+    "semantic_hash": "f431d947f0c9166eca724be4a5a44b35"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/client/ExamGradingClient.java": {
+    "mtime": 1791207759.943964,
+    "seen": 1793352137.2963219,
+    "ast_hash": "3cd66434e9218413bd37cf5d54fd5395",
+    "semantic_hash": "3cd66434e9218413bd37cf5d54fd5395"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/config/RetentionConfig.java": {
+    "mtime": 1791207749.099369,
+    "seen": 1793352137.2963228,
+    "ast_hash": "abbc6c8992c6c0f485baf313a856d52d",
+    "semantic_hash": "abbc6c8992c6c0f485baf313a856d52d"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/controller/ReviewController.java": {
+    "mtime": 1793108379.2337961,
+    "seen": 1793352137.2963233,
+    "ast_hash": "5b793305f1b3719d6271b2da7e9d9306",
+    "semantic_hash": "5b793305f1b3719d6271b2da7e9d9306"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/domain/ReviewStatus.java": {
+    "mtime": 1791207752.7324648,
+    "seen": 1793352137.296324,
+    "ast_hash": "57016f450a38734f0e4fdf9fdc0e8c73",
+    "semantic_hash": "57016f450a38734f0e4fdf9fdc0e8c73"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/dto/CouncilDecisionRequest.java": {
+    "mtime": 1791207754.512303,
+    "seen": 1793352137.296325,
+    "ast_hash": "83ec32ae814380ba009967214e0b8928",
+    "semantic_hash": "83ec32ae814380ba009967214e0b8928"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/job/RetentionScheduler.java": {
+    "mtime": 1791207761.7455122,
+    "seen": 1793352137.2963254,
+    "ast_hash": "ef6577f44e2659aced25eccb68dd724c",
+    "semantic_hash": "ef6577f44e2659aced25eccb68dd724c"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/repository/ReviewRepositoryMarker.java": {
+    "mtime": 1791207756.3305726,
+    "seen": 1793352137.2963262,
+    "ast_hash": "ef16562e278796cac47fbc2656a83a71",
+    "semantic_hash": "ef16562e278796cac47fbc2656a83a71"
+  },
+  "result-review-service/src/main/java/vn/edu/examgrading/resultreview/service/ResultReviewServiceMarker.java": {
+    "mtime": 1791207758.1142573,
+    "seen": 1793352137.2963269,
+    "ast_hash": "8f444b7c76e88ca51e6d0303bc875f32",
+    "semantic_hash": "8f444b7c76e88ca51e6d0303bc875f32"
+  },
+  "result-review-service/src/main/resources/application-test.yml": {
+    "mtime": 1791859337.3954337,
+    "seen": 1793352137.2963276,
+    "ast_hash": "5038df841d6db802f2b71a4fd543134e",
+    "semantic_hash": "5038df841d6db802f2b71a4fd543134e"
+  },
+  "result-review-service/src/main/resources/application.yml": {
+    "mtime": 1791859385.4799008,
+    "seen": 1793352137.2963283,
+    "ast_hash": "51b5abdb97603e1b7ec3eba240509ffa",
+    "semantic_hash": "51b5abdb97603e1b7ec3eba240509ffa"
+  },
+  "result-review-service/src/main/resources/db/migration/V1__baseline.sql": {
+    "mtime": 1791207765.3547928,
+    "seen": 1793352137.296329,
+    "ast_hash": "d22240d60616a59bc19bc7f48ab859fe",
+    "semantic_hash": "d22240d60616a59bc19bc7f48ab859fe"
+  },
+  "result-review-service/src/main/resources/db/migration/V2__review_result_core.sql": {
+    "mtime": 1793108379.2347975,
+    "seen": 1793352137.2963297,
+    "ast_hash": "5d387f6c0fffb3ebc9425561f6195458",
+    "semantic_hash": "5d387f6c0fffb3ebc9425561f6195458"
+  },
+  "settings.gradle": {
+    "mtime": 1791207509.780019,
+    "seen": 1793352137.2963324,
+    "ast_hash": "032ed85adec5189ad8d6879b7dbb9265",
+    "semantic_hash": "032ed85adec5189ad8d6879b7dbb9265"
+  },
+  "submission-service/build.gradle": {
+    "mtime": 1791863652.0283866,
+    "seen": 1793352137.296333,
+    "ast_hash": "3e30ba626d5d4fc9925c7b94fcc657b6",
+    "semantic_hash": "3e30ba626d5d4fc9925c7b94fcc657b6"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/SubmissionServiceApplication.java": {
+    "mtime": 1791207593.6780736,
+    "seen": 1793352137.2963338,
+    "ast_hash": "135f852f826027706a7065b7729e2732",
+    "semantic_hash": "135f852f826027706a7065b7729e2732"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/config/RabbitMqConfig.java": {
+    "mtime": 1793108379.2347975,
+    "seen": 1793352137.2963343,
+    "ast_hash": "b33e34ae1336f6c2f5a8faa72a560b61",
+    "semantic_hash": "b33e34ae1336f6c2f5a8faa72a560b61"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/controller/InternalSubmissionController.java": {
+    "mtime": 1793108379.2357967,
+    "seen": 1793352137.2963352,
+    "ast_hash": "f36b75a2f1e3a738149b3afefa8465ee",
+    "semantic_hash": "f36b75a2f1e3a738149b3afefa8465ee"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/controller/SubmissionController.java": {
+    "mtime": 1793108379.2357967,
+    "seen": 1793352137.296336,
+    "ast_hash": "7f99fce46e108e2872d355ea9987967c",
+    "semantic_hash": "7f99fce46e108e2872d355ea9987967c"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/domain/SubmissionStatus.java": {
+    "mtime": 1791207599.0716188,
+    "seen": 1793352137.2963367,
+    "ast_hash": "58002069171635d6b8e5c05479154849",
+    "semantic_hash": "58002069171635d6b8e5c05479154849"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/dto/InitSubmissionRequest.java": {
+    "mtime": 1791207600.8676434,
+    "seen": 1793352137.2963374,
+    "ast_hash": "c2870ff93ee37a7fffe93603de5d4a48",
+    "semantic_hash": "c2870ff93ee37a7fffe93603de5d4a48"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/job/UploadCleanupJob.java": {
+    "mtime": 1791207609.8370333,
+    "seen": 1793352137.296338,
+    "ast_hash": "951b14c1c185d34011728fbb9028c23e",
+    "semantic_hash": "951b14c1c185d34011728fbb9028c23e"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/messaging/ProcessingJobConsumer.java": {
+    "mtime": 1791207606.2662454,
+    "seen": 1793352137.296339,
+    "ast_hash": "f8a1244615b9f76c4f20c6c2bc767cd0",
+    "semantic_hash": "f8a1244615b9f76c4f20c6c2bc767cd0"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/repository/SubmissionRepositoryMarker.java": {
+    "mtime": 1791207602.6557128,
+    "seen": 1793352137.2963398,
+    "ast_hash": "4228a2952cb3f060654a859d40d661a8",
+    "semantic_hash": "4228a2952cb3f060654a859d40d661a8"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/service/SubmissionServiceMarker.java": {
+    "mtime": 1791207604.418197,
+    "seen": 1793352137.2963405,
+    "ast_hash": "14ff0bdeb04542142aefbc5cae7d4455",
+    "semantic_hash": "14ff0bdeb04542142aefbc5cae7d4455"
+  },
+  "submission-service/src/main/java/vn/edu/examgrading/submission/storage/ObjectStorageGateway.java": {
+    "mtime": 1791207608.0562634,
+    "seen": 1793352137.2963412,
+    "ast_hash": "652188a395a6b256132f1e38feec2178",
+    "semantic_hash": "652188a395a6b256132f1e38feec2178"
+  },
+  "submission-service/src/main/resources/application-test.yml": {
+    "mtime": 1791859336.8752685,
+    "seen": 1793352137.2963421,
+    "ast_hash": "505c91e36993891d05b857d87a32a4ef",
+    "semantic_hash": "505c91e36993891d05b857d87a32a4ef"
+  },
+  "submission-service/src/main/resources/application.yml": {
+    "mtime": 1793108379.2367973,
+    "seen": 1793352137.2963426,
+    "ast_hash": "9eb323f5fe31f48012804a500a9c39c8",
+    "semantic_hash": "9eb323f5fe31f48012804a500a9c39c8"
+  },
+  "submission-service/src/main/resources/db/migration/V1__baseline.sql": {
+    "mtime": 1791207613.4352722,
+    "seen": 1793352137.2963595,
+    "ast_hash": "8dc892c9cf87574d47cbfcc8ff256e31",
+    "semantic_hash": "8dc892c9cf87574d47cbfcc8ff256e31"
+  },
+  "submission-service/src/main/resources/db/migration/V2__submission_core.sql": {
+    "mtime": 1793108379.2367973,
+    "seen": 1793352137.2963603,
+    "ast_hash": "1bda89e46526218e75a42ba8bda4ce5e",
+    "semantic_hash": "1bda89e46526218e75a42ba8bda4ce5e"
+  },
+  "documentation/specification/10-implementation-spec.md": {
+    "mtime": 1793108379.224797,
+    "seen": 1793352137.296361,
+    "ast_hash": "d8da8a10ab9dbd5290122388edba0598",
+    "semantic_hash": "d8da8a10ab9dbd5290122388edba0598"
+  },
+  "documentation/specification/source/02-architecture-final.md": {
+    "mtime": 1793108379.226797,
+    "seen": 1793352137.2963617,
+    "ast_hash": "7ef1fb205006a1d4f5234026ee9776d5",
+    "semantic_hash": "7ef1fb205006a1d4f5234026ee9776d5"
+  },
+  "documentation/specification/source/03-components-final.md": {
+    "mtime": 1793108379.226797,
+    "seen": 1793352137.2963624,
+    "ast_hash": "8731bfdbb191d505f269b6448f8ea257",
+    "semantic_hash": "8731bfdbb191d505f269b6448f8ea257"
+  },
+  "frontend-demo/index.html": {
+    "mtime": 1791468971.0102837,
+    "seen": 1793352137.2963634,
+    "ast_hash": "a1c10ad5f4e6acae034c85ebf9b05c20",
+    "semantic_hash": "a1c10ad5f4e6acae034c85ebf9b05c20"
+  },
+  "frontend-demo/public/favicon.svg": {
+    "mtime": 1791468960.8992896,
+    "seen": 1793352137.296364,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": "7e840862161341271697daa99a40d76b"
+  },
+  "frontend-demo/public/icons.svg": {
+    "mtime": 1791468960.8992896,
+    "seen": 1793352137.2963648,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": "3b4fcfcf393eca4d264dca4a4663bc37"
+  },
+  "frontend-demo/src/assets/hero.png": {
+    "mtime": 1791468960.9026778,
+    "seen": 1793352137.2963653,
+    "ast_hash": "aead493361b27e7510691c5d7072dfc1",
+    "semantic_hash": "aead493361b27e7510691c5d7072dfc1"
+  },
+  "frontend-demo/src/assets/react.svg": {
+    "mtime": 1791468960.9036884,
+    "seen": 1793352137.296366,
+    "ast_hash": "f0402b67b6ce880f65666bb49e841696",
+    "semantic_hash": "f0402b67b6ce880f65666bb49e841696"
+  },
+  "frontend-demo/src/assets/vite.svg": {
+    "mtime": 1791468960.9050596,
+    "seen": 1793352137.296367,
+    "ast_hash": "9960a24288958394ac50e57ff638b036",
+    "semantic_hash": "9960a24288958394ac50e57ff638b036"
+  }
+}

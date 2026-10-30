@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import "./rubric.css";
-import { gradingApi } from "./api";
-
-const formatDateTime = (value) =>
-  new Intl.DateTimeFormat('vi-VN', {
-    hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
-    timeZone: 'Asia/Ho_Chi_Minh',
-  }).format(new Date(value)).replace(',', ' ·');
+import { authApi, examApi, gradingApi, reviewApi } from "./api/index.js";
+import Button from "./components/Button";
+import Modal from "./components/Modal";
+import Table from "./components/Table";
+import Status from "./components/Status";
+import Login from "./pages/Login";
+import OfficePage from "./pages/office/OfficePage";
+import GraderPage from "./pages/grader/GraderPage";
+import CouncilPage from "./pages/council/CouncilPage";
+import { mapExams } from "./utils/examFormat";
 
 const submissionStatusLabel = {
   GRADING: 'Đang chấm',
@@ -15,37 +18,9 @@ const submissionStatusLabel = {
   REVIEW_REQUIRED: 'Cần xử lý',
   COMPLETED: 'Đã chấm',
 };
-const getExams = (items) => items.map((item) => ({
-  ...item,
-  id: item.examCode,
-  time: formatDateTime(item.examTime),
-  day: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(item.examTime)),
-  month: `THG ${new Intl.DateTimeFormat('vi-VN', { month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(item.examTime))}`,
-  classes: item.gradeLevel,
-  candidates: item.candidateCount ?? 0,
-  submitted: item.submittedCount ?? 0,
-  graded: item.gradedCount ?? 0,
-  issues: item.reviewCount ?? 0,
-}));
 const paperRows = (submissions) => submissions.map((submission) => [submission.pseudonym ?? submission.pseudonymValue ?? '—', '—', '—', '—', submission.totalScore?.toFixed?.(2) ?? '—', submissionStatusLabel[submission.status] ?? submission.status ?? 'Chưa chấm']);
 const reviewRows = (reviews) => reviews.map((review) => [review.pseudonym ?? review.pseudonymValue ?? '—', review.graderOneScore?.toFixed?.(2) ?? '—', review.graderTwoScore?.toFixed?.(2) ?? '—', review.finalScore?.toFixed?.(2) ?? '—', review.reason ?? review.status ?? '—']);
 const rubric = [];
-const statusClass = (s) =>
-  s
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replaceAll(" ", "-");
-function Status({ children }) {
-  return <span className={`status ${statusClass(children)}`}>{children}</span>;
-}
-function Button({ children, className = "", ...props }) {
-  return (
-    <button type="button" className={`button ${className}`} {...props}>
-      {children}
-    </button>
-  );
-}
 function Header({ crumb, title, children }) {
   return (
     <header className="topbar">
@@ -85,45 +60,15 @@ function Info({ exam }) {
     </div>
   );
 }
-function Modal({ title, close, children }) {
-  return (
-    <div className="overlay">
-      <div className="modal">
-        <div className="modal-head">
-          <div>
-            <p className="crumb">HỆ THỐNG CHẤM THI</p>
-            <h2>{title}</h2>
-          </div>
-          <button onClick={close}>×</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 const accessTypes = {
   office: { apiRole: "EXAM_OFFICE", icon: "▦", title: "Phòng khảo thí", detail: "Quản lý kỳ thi, danh sách thí sinh và kết quả." },
   council: { apiRole: "COUNCIL", icon: "♙", title: "Hội đồng chấm thi", detail: "Rà soát chênh lệch và quyết định điểm chốt." },
   grader: { apiRole: "GRADER", icon: "✎", title: "Giám khảo", detail: "Nhận phân công và chấm bài độc lập." },
 };
-function Login({ onLogin, onRegister }) {
-  const [mode, setMode] = useState("login"), [error, setError] = useState(""), [notice, setNotice] = useState(""), [loading, setLoading] = useState(false);
-  const submit = async (event) => {
-    event.preventDefault(); const form = new FormData(event.currentTarget); setLoading(true); setError(""); setNotice("");
-    try {
-      if (mode === "register") {
-        if (form.get("password") !== form.get("confirmPassword")) throw new Error("Mật khẩu xác nhận chưa khớp.");
-        await onRegister({ username: form.get("username"), fullName: form.get("fullName"), email: form.get("email"), password: form.get("password") });
-        setNotice("Đăng ký thành công. Hãy đăng nhập bằng tài khoản Giám khảo của bạn."); setMode("login"); event.currentTarget.reset();
-      } else await onLogin({ username: form.get("username"), password: form.get("password") });
-    } catch (cause) { setError(cause.message); } finally { setLoading(false); }
-  };
-  return <div className="auth-page"><section className="auth-intro"><div className="auth-brand"><b>EG</b><span>ExamGrader</span></div><p className="crumb">HỆ THỐNG SỐ HÓA & CHẤM THI TỰ LUẬN</p><h1>{mode === "register" ? "Đăng ký tài khoản Giám khảo" : "Một cổng đăng nhập cho toàn hệ thống"}</h1><p>{mode === "register" ? "Tài khoản Giám khảo được dùng để nhận phân công và chấm bài độc lập." : "Đăng nhập bằng tài khoản được cấp. Hệ thống tự nhận diện vai trò và đưa bạn đến không gian làm việc phù hợp."}</p></section><section className="auth-panel"><div className="auth-panel-inner"><p className="crumb">{mode === "register" ? "TẠO TÀI KHOẢN" : "ĐĂNG NHẬP HỆ THỐNG"}</p><h2>{mode === "register" ? "Thông tin Giám khảo" : "Chào mừng trở lại"}</h2><p className="auth-caption">{mode === "register" ? "Chỉ Giám khảo có thể tự đăng ký. Phòng khảo thí và Hội đồng dùng tài khoản do hệ thống cấp." : "Sau khi xác thực, bạn sẽ tự động được chuyển đến giao diện theo đúng quyền của mình."}</p><form className="auth-form" onSubmit={submit}>{mode === "register" && <><label>Họ và tên<input name="fullName" required autoFocus placeholder="Nguyễn Văn A" /></label><label>Email<input name="email" type="email" placeholder="giaokhao@truong.edu.vn" /></label></>}<label>Tên đăng nhập<input name="username" required autoFocus={mode === "login"} placeholder="Nhập tên đăng nhập" /></label><label>Mật khẩu<input name="password" required type="password" minLength="8" placeholder="Tối thiểu 8 ký tự" /></label>{mode === "register" && <label>Xác nhận mật khẩu<input name="confirmPassword" required type="password" minLength="8" placeholder="Nhập lại mật khẩu" /></label>}{notice && <p className="success">✓ {notice}</p>}{error && <p className="form-error">{error}</p>}<Button type="submit" disabled={loading}>{loading ? "Đang xử lý…" : mode === "register" ? "Tạo tài khoản Giám khảo" : "Đăng nhập"}</Button></form>{mode === "login" ? <button type="button" className="auth-link" onClick={() => { setMode("register"); setError(""); }}>Chưa có tài khoản? <b>Đăng ký Giám khảo</b></button> : <button type="button" className="auth-link" onClick={() => { setMode("login"); setError(""); }}>← Quay lại đăng nhập</button>}</div></section></div>;
-}
 function SetupExam({ examId, close, refresh }) {
   const [message, setMessage] = useState(""); const [error, setError] = useState("");
   const action = async (work, ok) => { setError(""); try { await work(); setMessage(ok); refresh(); } catch (cause) { setError(cause.message); } };
-  return <Modal title="Thiết lập kỳ thi" close={close}><div className="form"><section><b>Thêm câu hỏi</b><form className="form-grid compact" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(()=>gradingApi.addQuestion(examId,{orderNo:Number(f.get("orderNo")),content:f.get("content"),maxScore:Number(f.get("maxScore")),required:true}),"Đã thêm câu hỏi");}}><label>Thứ tự<input name="orderNo" type="number" min="1" required /></label><label>Nội dung<input name="content" required /></label><label>Điểm tối đa<input name="maxScore" type="number" min="0" step=".25" required /></label><div className="actions"><Button type="submit">Lưu câu hỏi</Button></div></form></section><section><b>Tạo rubric</b><form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(async()=>{const created=await gradingApi.createRubric(examId,JSON.parse(f.get("content")));await gradingApi.activateRubric(examId,created.rubricId);},"Đã tạo và kích hoạt rubric");}}><label className="feedback">Nội dung JSON<textarea name="content" defaultValue={'{"instructions":"Chấm theo đáp án đã phê duyệt"}'} /></label><div className="actions"><Button type="submit">Lưu rubric</Button></div></form></section><section><b>Import danh sách thí sinh (CSV)</b><form onSubmit={(e)=>{e.preventDefault();const file=new FormData(e.currentTarget).get("file");if(!(file instanceof File)||file.size===0){setError("Hãy chọn tệp CSV trước khi import.");return;}action(async()=>{const result=await gradingApi.importRoster(examId,file);return result;},"Đã import roster");}}><label className="upload">⇧ <b>Chọn tệp CSV</b><input name="file" type="file" accept=".csv,text/csv" required /></label><small>Header bắt buộc: candidateNumber, fullName; tùy chọn: className.</small><div className="actions"><Button type="submit">Import danh sách</Button></div></form></section>{message&&<p className="success">{message}</p>}{error&&<p className="form-error">{error}</p>}</div></Modal>;
+  return <Modal title="Thiết lập kỳ thi" close={close}><div className="form"><section><b>Thêm câu hỏi</b><form className="form-grid compact" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(()=>examApi.addQuestion(examId,{orderNo:Number(f.get("orderNo")),content:f.get("content"),maxScore:Number(f.get("maxScore")),required:true}),"Đã thêm câu hỏi");}}><label>Thứ tự<input name="orderNo" type="number" min="1" required /></label><label>Nội dung<input name="content" required /></label><label>Điểm tối đa<input name="maxScore" type="number" min="0" step=".25" required /></label><div className="actions"><Button type="submit">Lưu câu hỏi</Button></div></form></section><section><b>Tạo rubric</b><form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(async()=>{const created=await examApi.createRubric(examId,JSON.parse(f.get("content")));await examApi.activateRubric(examId,created.rubricId);},"Đã tạo và kích hoạt rubric");}}><label className="feedback">Nội dung JSON<textarea name="content" defaultValue={'{"instructions":"Chấm theo đáp án đã phê duyệt"}'} /></label><div className="actions"><Button type="submit">Lưu rubric</Button></div></form></section><section><b>Import danh sách thí sinh (CSV)</b><form onSubmit={(e)=>{e.preventDefault();const file=new FormData(e.currentTarget).get("file");if(!(file instanceof File)||file.size===0){setError("Hãy chọn tệp CSV trước khi import.");return;}action(async()=>{const result=await examApi.importRoster(examId,file);return result;},"Đã import roster");}}><label className="upload">⇧ <b>Chọn tệp CSV</b><input name="file" type="file" accept=".csv,text/csv" required /></label><small>Header bắt buộc: candidateNumber, fullName; tùy chọn: className.</small><div className="actions"><Button type="submit">Import danh sách</Button></div></form></section>{message&&<p className="success">{message}</p>}{error&&<p className="form-error">{error}</p>}</div></Modal>;
 }
 function CreateModal({ close, onCreated }) {
   const [cross, setCross] = useState(true);
@@ -322,7 +267,7 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
   useEffect(() => {
     const aborter = new AbortController();
     setCandidatesLoading(true); setCandidateError("");
-    gradingApi.listCandidates(exam.examId, { signal: aborter.signal })
+    examApi.listCandidates(exam.examId, { signal: aborter.signal })
       .then((payload) => setCandidates(Array.isArray(payload) ? payload : payload.items ?? []))
       .catch((cause) => { if (cause.name !== "AbortError") { setCandidates([]); setCandidateError(cause.message); } })
       .finally(() => { if (!aborter.signal.aborted) setCandidatesLoading(false); });
@@ -412,42 +357,6 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
         </div>
       </main>
     </>
-  );
-}
-function Table({ headers, rows, statusAt, issueAt, action }) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {headers.map((h) => (
-              <th key={h}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={r[0]}>
-              {r.map((v, j) => (
-                <td
-                  key={j}
-                  className={j === issueAt && v !== "—" ? "issue" : ""}
-                >
-                  {j === 0 || (j === r.length - 1 && j !== statusAt) ? (
-                    <b>{v}</b>
-                  ) : j === statusAt ? (
-                    <Status>{v}</Status>
-                  ) : (
-                    v
-                  )}
-                </td>
-              ))}
-              {action && <td>{action(r, i)}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
 function Finalize({ back }) {
@@ -944,16 +853,16 @@ function App() {
     [authToken, setAuthToken] = useState(() => sessionStorage.getItem("exam-grading.access-token")),
     [user, setUser] = useState(null),
     [configuring, setConfiguring] = useState(false);
-  const exams = useMemo(() => getExams(examItems), [examItems]);
+  const exams = useMemo(() => mapExams(examItems), [examItems]);
   const selectedExam = exams.find((item) => item.examId === selectedExamId) ?? exams[0];
   useEffect(() => {
     const aborter = new AbortController();
-    gradingApi.listExams({ signal: aborter.signal })
+    examApi.listExams({ signal: aborter.signal })
       .then(async (payload) => {
         const items = Array.isArray(payload) ? payload : payload.items ?? payload.content ?? [];
         const enriched = await Promise.all(items.map(async (exam) => {
-          const calls = [gradingApi.listSubmissions(exam.examId), gradingApi.listReviews(exam.examId)];
-          if (role === "office") calls.unshift(gradingApi.listCandidates(exam.examId));
+          const calls = [gradingApi.listSubmissions(exam.examId), reviewApi.listReviews(exam.examId)];
+          if (role === "office") calls.unshift(examApi.listCandidates(exam.examId));
           const results = await Promise.all(calls);
           const candidates = role === "office" ? (Array.isArray(results[0]) ? results[0] : results[0].items ?? []) : null;
           const submissions = results[role === "office" ? 1 : 0];
@@ -970,24 +879,24 @@ function App() {
     return () => aborter.abort();
   }, [authToken, role]);
   const login = async (credentials) => {
-    const response = await gradingApi.login(credentials);
+    const response = await authApi.login(credentials);
     const tokenRole = JSON.parse(atob(response.accessToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))).role;
     const workspace = tokenRole === "GRADER" ? "grader" : tokenRole === "COUNCIL" ? "council" : tokenRole === "EXAM_OFFICE" ? "office" : null;
     if (!workspace) throw new Error("Tài khoản không có vai trò hợp lệ trong hệ thống.");
     sessionStorage.setItem("exam-grading.access-token", response.accessToken); setAuthToken(response.accessToken); setRole(workspace);
-    try { setUser(await gradingApi.me({ token: response.accessToken })); } catch { setUser(null); }
+    try { setUser(await authApi.me({ token: response.accessToken })); } catch { setUser(null); }
   };
-  const registerGrader = (registration) => gradingApi.registerGrader(registration);
+  const registerGrader = (registration) => authApi.registerGrader(registration);
   const logout = () => { sessionStorage.removeItem("exam-grading.access-token"); setAuthToken(null); setUser(null); setPage("home"); };
   const createExam = async (form, rosterFile) => {
-    const created = await gradingApi.createExam(form);
+    const created = await examApi.createExam(form);
     setExamItems((items) => [created, ...items]);
     setSelectedExamId(created.examId); setRevision((value) => value + 1);
-    return rosterFile ? gradingApi.importRoster(created.examId, rosterFile) : null;
+    return rosterFile ? examApi.importRoster(created.examId, rosterFile) : null;
   };
   const exportResults = async (examId) => {
     try {
-      const file = await gradingApi.exportResults(examId);
+      const file = await examApi.exportResults(examId);
       const url = URL.createObjectURL(file); const link = document.createElement("a");
       link.href = url; link.download = `ket-qua-${examId}.csv`; link.click(); URL.revokeObjectURL(url);
     } catch (cause) { setApiError(cause.message); }
@@ -995,7 +904,7 @@ function App() {
   useEffect(() => {
     if (!selectedExamId) return undefined;
     const aborter = new AbortController();
-    Promise.all([gradingApi.listSubmissions(selectedExamId, { signal: aborter.signal }), gradingApi.listReviews(selectedExamId, { signal: aborter.signal })])
+    Promise.all([gradingApi.listSubmissions(selectedExamId, { signal: aborter.signal }), reviewApi.listReviews(selectedExamId, { signal: aborter.signal })])
       .then(([submissions, reviews]) => {
         setSubmissions(Array.isArray(submissions) ? submissions : submissions.items ?? []);
         setReviews(Array.isArray(reviews) ? reviews : reviews.items ?? []);
@@ -1010,47 +919,43 @@ function App() {
   const noExamView = <><Header crumb="DỮ LIỆU KỲ THI" title="Chưa có kỳ thi" /><main className="content"><section className="table-box"><h2>Chưa có dữ liệu để hiển thị</h2><p>Danh sách kỳ thi sẽ xuất hiện tại đây khi máy chủ có dữ liệu phù hợp với quyền của bạn.</p></section></main></>;
   let view = !selectedExam && role !== "office" ? noExamView :
     role === "office" ? (
-      page === "home" ? (
-        <OfficeHome exams={exams}
+      <OfficePage page={page}
+        home={<OfficeHome exams={exams}
           open={openExam}
           create={() => setCreating(true)}
-        />
-      ) : page === "final" ? (
-        <Finalize back={() => setPage("exam")} />
-      ) : (
-        <OfficeExam
+        />}
+        final={<Finalize back={() => setPage("exam")} />}
+        exam={<OfficeExam
           exam={selectedExam}
           back={() => setPage("home")}
           finalize={() => setPage("final")}
           exportResults={exportResults}
           configure={() => setConfiguring(true)}
           revision={revision}
-        />
-      )
+        />}
+      />
     ) : role === "grader" ? (
-      page === "home" ? (
-          <GraderHome exam={selectedExam} submissions={submissions} open={() => setPage("papers")} />
-      ) : page === "papers" ? (
-        <PaperList
+      <GraderPage page={page}
+        home={<GraderHome exam={selectedExam} submissions={submissions} open={() => setPage("papers")} />}
+        papers={<PaperList
           exam={selectedExam}
           submissions={submissions}
           back={() => setPage("home")}
           grade={() => setPage("grade")}
-        />
-      ) : (
-        <Grading back={() => setPage("papers")} />
-      )
-    ) : page === "home" ? (
-      <CouncilHome exams={exams} open={openExam} />
-    ) : page === "exam" ? (
-      <CouncilExam
+        />}
+        grading={<Grading back={() => setPage("papers")} />}
+      />
+    ) : (
+      <CouncilPage page={page}
+        home={<CouncilHome exams={exams} open={openExam} />}
+        exam={<CouncilExam
         exam={selectedExam}
         reviews={reviews}
         back={() => setPage("home")}
         grade={() => setPage("grade")}
+        />}
+        grading={<Grading council back={() => setPage("exam")} />}
       />
-    ) : (
-      <Grading council back={() => setPage("exam")} />
     );
   if (!authToken) return <Login onLogin={login} onRegister={registerGrader} />;
   return (

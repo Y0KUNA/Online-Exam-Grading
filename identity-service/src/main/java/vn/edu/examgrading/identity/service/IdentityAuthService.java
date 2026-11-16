@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.NonNull;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -23,37 +24,75 @@ import vn.edu.examgrading.identity.repository.UserAccountRepository;
 public class IdentityAuthService {
     private static final String INVALID_CREDENTIALS = "Invalid credentials";
     private static final SecureRandom RANDOM = new SecureRandom();
-    private final UserAccountRepository users; private final PasswordEncoder passwordEncoder; private final JwtEncoder jwtEncoder;
-    private final String issuer; private final int ttlMinutes; private final boolean localEnabled; private final int maxFailures; private final int lockMinutes;
+    private final UserAccountRepository users;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtEncoder jwtEncoder;
+    private final String issuer;
+    private final int ttlMinutes;
+    private final boolean localEnabled;
+    private final int maxFailures;
+    private final int lockMinutes;
     public IdentityAuthService(UserAccountRepository users, PasswordEncoder passwordEncoder, JwtEncoder jwtEncoder,
         @Value("${app.auth.issuer}") String issuer, @Value("${app.auth.ttl-minutes}") int ttlMinutes,
         @Value("${app.auth.local-enabled}") boolean localEnabled, @Value("${app.auth.login-max-failures}") int maxFailures,
         @Value("${app.auth.login-lock-minutes}") int lockMinutes) {
-        this.users = users; this.passwordEncoder = passwordEncoder; this.jwtEncoder = jwtEncoder; this.issuer = issuer;
-        this.ttlMinutes = ttlMinutes; this.localEnabled = localEnabled; this.maxFailures = maxFailures; this.lockMinutes = lockMinutes;
+        this.users = users;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtEncoder = jwtEncoder;
+        this.issuer = issuer;
+        this.ttlMinutes = ttlMinutes;
+        this.localEnabled = localEnabled;
+        this.maxFailures = maxFailures;
+        this.lockMinutes = lockMinutes;
     }
-    @Transactional public LoginResponse login(LoginRequest request) {
-        if (!localEnabled) throw new InvalidCredentialsException();
-        if (request == null || request.username() == null || request.password() == null) throw new IllegalArgumentException("username and password are required");
+    @Transactional
+    public LoginResponse login(LoginRequest request) {
+        if (!localEnabled) {
+            throw new InvalidCredentialsException();
+        }
+        if (request == null || request.username() == null || request.password() == null) {
+            throw new IllegalArgumentException("username and password are required");
+        }
         Instant now = Instant.now();
         UserAccount user = users.findByUsernameIgnoreCase(request.username()).orElseThrow(InvalidCredentialsException::new);
         if (!user.active() || user.locked(now) || !passwordEncoder.matches(request.password(), user.passwordHash())) {
-            user.loginFailed(now, maxFailures, lockMinutes); throw new InvalidCredentialsException();
+            user.loginFailed(now, maxFailures, lockMinutes);
+            throw new InvalidCredentialsException();
         }
         user.loginSucceeded(now);
         Instant expiry = now.plusSeconds(ttlMinutes * 60L);
-        JwtClaimsSet claims = JwtClaimsSet.builder().issuer(issuer).subject(user.id().toString()).issuedAt(now).expiresAt(expiry)
-            .id(UUID.randomUUID().toString()).claim("role", user.role().name()).build();
-        return new LoginResponse(jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue(), "Bearer", ttlMinutes * 60L, user.mustChangePassword());
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+            .issuer(issuer)
+            .subject(user.id().toString())
+            .issuedAt(now)
+            .expiresAt(expiry)
+            .id(UUID.randomUUID().toString())
+            .claim("role", user.role().name())
+            .build();
+        return new LoginResponse(
+            jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue(),
+            "Bearer",
+            ttlMinutes * 60L,
+            user.mustChangePassword()
+        );
     }
-    @Transactional public UserCredentialsResponse register(RegisterUserRequest request) {
-        if (request == null) throw new IllegalArgumentException("request is required");
-        if (request.role() == null) throw new IllegalArgumentException("role is required");
+    @Transactional
+    public UserCredentialsResponse register(RegisterUserRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
+        if (request.role() == null) {
+            throw new IllegalArgumentException("role is required");
+        }
         String username = normalizeText(request.username());
         String fullName = normalizeText(request.fullName());
         String email = blankToNull(request.email());
-        if (users.existsByUsernameIgnoreCase(username)) throw new DuplicateUserException("USERNAME_TAKEN");
-        if (email != null && users.existsByEmailIgnoreCase(email)) throw new DuplicateUserException("EMAIL_TAKEN");
+        if (users.existsByUsernameIgnoreCase(username)) {
+            throw new DuplicateUserException("USERNAME_TAKEN");
+        }
+        if (email != null && users.existsByEmailIgnoreCase(email)) {
+            throw new DuplicateUserException("EMAIL_TAKEN");
+        }
         String password = request.password() == null ? null : request.password().trim();
         boolean mustChangePassword = false;
         String temporaryPassword = null;
@@ -64,30 +103,59 @@ public class IdentityAuthService {
         } else if (password.length() < 8) {
             throw new IllegalArgumentException("password must contain at least 8 characters");
         }
-        UserAccount created = users.save(new UserAccount(username, passwordEncoder.encode(password), fullName, email, request.role(), mustChangePassword));
-        return new UserCredentialsResponse(UserResponse.from(created), temporaryPassword, created.mustChangePassword());
+        UserAccount created = users.save(
+            new UserAccount(username, passwordEncoder.encode(password), fullName, email, request.role(), mustChangePassword)
+        );
+        return new UserCredentialsResponse(
+            UserResponse.from(created),
+            temporaryPassword,
+            created.mustChangePassword()
+        );
     }
-    @Transactional public UserCredentialsResponse resetPassword(UUID userId) {
+    @Transactional
+    public UserCredentialsResponse resetPassword(UUID userId) {
         UserAccount user = users.findById(userId).orElseThrow(UserNotFoundException::new);
         String temporaryPassword = generateTemporaryPassword();
         user.resetPassword(passwordEncoder.encode(temporaryPassword), true);
-        return new UserCredentialsResponse(UserResponse.from(user), temporaryPassword, true);
+        return new UserCredentialsResponse(
+            UserResponse.from(user),
+            temporaryPassword,
+            true
+        );
     }
-    @Transactional public void bootstrap(String username, String password) {
-        if (username == null || username.isBlank() || password == null || password.length() < 8 || users.countByRoleAndActiveTrue(UserRole.EXAM_OFFICE) > 0) return;
-        users.save(new UserAccount(username.trim(), passwordEncoder.encode(password), username.trim(), null, UserRole.EXAM_OFFICE, true));
+    @Transactional
+    public void bootstrap(String username, String password) {
+        if (username == null || username.isBlank() || password == null || password.length() < 8
+            || users.countByRoleAndActiveTrue(UserRole.EXAM_OFFICE) > 0) {
+            return;
+        }
+        users.save(
+            new UserAccount(username.trim(), passwordEncoder.encode(password), username.trim(), null, UserRole.EXAM_OFFICE, true)
+        );
     }
-    @Transactional public void changePassword(UUID id, String currentPassword, String newPassword) {
-        if (newPassword == null || newPassword.length() < 8) throw new IllegalArgumentException("password must contain at least 8 characters");
+    @Transactional
+    public void changePassword(UUID id, String currentPassword, String newPassword) {
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new IllegalArgumentException("password must contain at least 8 characters");
+        }
         UserAccount user = users.findById(id).orElseThrow(UserNotFoundException::new);
-        if (!passwordEncoder.matches(currentPassword, user.passwordHash())) throw new InvalidCredentialsException();
+        if (!passwordEncoder.matches(currentPassword, user.passwordHash())) {
+            throw new InvalidCredentialsException();
+        }
         user.changePassword(passwordEncoder.encode(newPassword));
     }
-    public UserAccount me(UUID id) { return users.findById(id).orElseThrow(UserNotFoundException::new); }
-    private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    public UserAccount me(@NonNull UUID id) {
+        return users.findById(id).orElseThrow(UserNotFoundException::new);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
     private String normalizeText(String value) {
         String normalized = blankToNull(value);
-        if (normalized == null || normalized.isBlank()) throw new IllegalArgumentException("required field is missing");
+        if (normalized == null || normalized.isBlank()) {
+            throw new IllegalArgumentException("required field is missing");
+        }
         return normalized;
     }
     private String generateTemporaryPassword() {
@@ -96,7 +164,21 @@ public class IdentityAuthService {
         for (int i = 0; i < 16; i++) password.append(chars.charAt(RANDOM.nextInt(chars.length())));
         return password.toString();
     }
-    public static final class InvalidCredentialsException extends RuntimeException { public InvalidCredentialsException() { super(INVALID_CREDENTIALS); } }
-    public static final class DuplicateUserException extends RuntimeException { public DuplicateUserException(String code) { super(code); } }
-    public static final class UserNotFoundException extends RuntimeException { public UserNotFoundException() { super("USER_NOT_FOUND"); } }
+    public static final class InvalidCredentialsException extends RuntimeException {
+        public InvalidCredentialsException() {
+            super(INVALID_CREDENTIALS);
+        }
+    }
+
+    public static final class DuplicateUserException extends RuntimeException {
+        public DuplicateUserException(String code) {
+            super(code);
+        }
+    }
+
+    public static final class UserNotFoundException extends RuntimeException {
+        public UserNotFoundException() {
+            super("USER_NOT_FOUND");
+        }
+    }
 }

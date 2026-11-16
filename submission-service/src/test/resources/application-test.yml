@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/submission_db?timezone=UTC
+    username: exam_grading
+    password: change-me
+  flyway:
+    enabled: false
+
+app:
+  storage:
+    mode: memory
+    endpoint: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: local
+    gateway-base: http://localhost:8080/storage
+    max-pdf-bytes: 52428800
+    size-tolerance-bytes: 1024

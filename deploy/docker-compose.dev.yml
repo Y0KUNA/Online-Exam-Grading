@@ -1,0 +1,7 @@
+services:
+  minio:
+    ports:
+      - "${MINIO_HOST_PORT:-9000}:9000"
+  postgres-submission:
+    ports:
+      - "${SUBMISSION_DB_HOST_PORT:-5433}:5432"

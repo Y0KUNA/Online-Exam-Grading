@@ -7,6 +7,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -20,7 +21,7 @@ public final class LoginRateLimitFilter implements WebFilter, Ordered {
     private final ConcurrentHashMap<String, Counter> counters = new ConcurrentHashMap<>();
     private final Clock clock = Clock.systemUTC();
     public LoginRateLimitFilter(Environment env) { requestsPerMinute = env.getProperty("app.login.rate-limit-per-minute", Integer.class, 10); }
-    @Override public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+    @Override public @NonNull Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         if (exchange.getRequest().getMethod() != HttpMethod.POST || !"/api/v1/auth/login".equals(exchange.getRequest().getPath().value())) return chain.filter(exchange);
         long minute = clock.millis() / 60_000L;
         String key = String.valueOf(exchange.getRequest().getRemoteAddress()) + ':' + minute;

@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import vn.edu.examgrading.common.security.HmacSigner;
 import vn.edu.examgrading.submission.domain.SubmissionStatus;
+import vn.edu.examgrading.submission.domain.SubmissionStatusMachine;
 
 /** Signed service-only transitions. Gateway rejects this namespace. */
 @RestController
@@ -26,14 +27,12 @@ public class InternalSubmissionController {
         Map<String,Object> current=jdbc.queryForMap("select status,version from submission where submission_id=?",submissionId);
         String expected=(String)body.get("expectedStatus"); String target=String.valueOf(body.get("newStatus"));
         if(expected!=null&&!expected.equals(current.get("status"))) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,"STATUS_VERSION_CONFLICT");
-        allowed(SubmissionStatus.valueOf((String)current.get("status")),SubmissionStatus.valueOf(target));
+        SubmissionStatus from = SubmissionStatus.valueOf((String)current.get("status"));
+        SubmissionStatus to = SubmissionStatus.valueOf(target);
+        SubmissionStatusMachine.transition(from, to);
         int progress=body.get("progress")==null?0:Integer.parseInt(body.get("progress").toString());
         jdbc.update("update submission set status=?,progress=?,version=version+1,updated_at=now() where submission_id=?",target,progress,submissionId);
         jdbc.update("insert into submission_event(submission_id,status,progress) values (?,?,?)",submissionId,target,progress);
         return jdbc.queryForMap("select submission_id as \"submissionId\",status,version from submission where submission_id=?",submissionId);
-    }
-    private static void allowed(SubmissionStatus from,SubmissionStatus to) {
-        boolean valid=switch(from) { case UPLOADING -> to==SubmissionStatus.UPLOADED||to==SubmissionStatus.FAILED; case UPLOADED -> to==SubmissionStatus.VALIDATING; case VALIDATING -> to==SubmissionStatus.ANONYMIZING||to==SubmissionStatus.REVIEW_REQUIRED||to==SubmissionStatus.FAILED; case ANONYMIZING -> to==SubmissionStatus.READY_FOR_GRADING||to==SubmissionStatus.FAILED; case READY_FOR_GRADING -> to==SubmissionStatus.GRADING||to==SubmissionStatus.REVIEW_REQUIRED; case GRADING -> to==SubmissionStatus.COMPLETED||to==SubmissionStatus.REVIEW_REQUIRED; case REVIEW_REQUIRED -> to==SubmissionStatus.GRADING||to==SubmissionStatus.VALIDATING||to==SubmissionStatus.ANONYMIZING||to==SubmissionStatus.COMPLETED||to==SubmissionStatus.FINALIZED; case COMPLETED -> to==SubmissionStatus.FINALIZED||to==SubmissionStatus.REVIEW_REQUIRED; case FINALIZED -> to==SubmissionStatus.REVIEW_REQUIRED; case FAILED -> to==SubmissionStatus.VALIDATING||to==SubmissionStatus.ANONYMIZING; };
-        if(!valid) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,"ILLEGAL_TRANSITION");
     }
 }

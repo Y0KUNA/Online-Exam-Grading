@@ -50,6 +50,43 @@ export const gradingApi = {
   createRubric: (examId, content, options) => api(`/api/v1/exams/${examId}/rubrics`, { ...options, method: "POST", body: { content } }),
   activateRubric: (examId, rubricId, options) => api(`/api/v1/exams/${examId}/rubrics/${rubricId}/activate`, { ...options, method: "POST", body: { confirmed: true } }),
   importRoster: (examId, file, options) => upload(`/api/v1/exams/${examId}/candidates/import`, file, options),
+  uploadSubmission: async (examId, candidateId, file, options = {}) => {
+    const { templateId, ...requestOptions } = options;
+    const initResponse = await api(`/api/v1/exams/${examId}/submissions`, {
+      ...requestOptions,
+      method: "POST",
+      body: {
+        candidateId,
+        templateId,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        contentType: file.type || "application/pdf",
+      },
+    });
+
+    if (!initResponse?.submissionId) return initResponse;
+
+    const uploadConfig = initResponse.upload ?? {};
+    const uploadUrl = uploadConfig.url ?? uploadConfig.uploadUrl ?? null;
+    if (uploadUrl) {
+      const form = new FormData();
+      for (const [name, value] of Object.entries(uploadConfig.fields ?? {})) {
+        form.append(name, String(value));
+      }
+      form.append("file", file, file.name);
+      const response = await fetch(uploadUrl, { method: "POST", body: form, signal: requestOptions.signal });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new ApiError(`Không thể tải bài thi lên storage (${response.status})`, response.status, errorText ? { message: errorText } : null);
+      }
+    }
+
+    return api(`/api/v1/submissions/${initResponse.submissionId}/complete`, {
+      ...requestOptions,
+      method: "POST",
+      body: {},
+    });
+  },
   listCandidates: (examId, options) => api(`/api/v1/exams/${examId}/candidates`, options),
   listSubmissions: (examId, options) => api(`/api/v1/exams/${examId}/submissions`, options),
   listReviews: (examId, options) => api(`/api/v1/reviews?examId=${encodeURIComponent(examId)}`, options),

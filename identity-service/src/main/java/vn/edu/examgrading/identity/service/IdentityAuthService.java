@@ -113,7 +113,7 @@ public class IdentityAuthService {
         );
     }
     @Transactional
-    public UserCredentialsResponse resetPassword(UUID userId) {
+    public UserCredentialsResponse resetPassword(@NonNull UUID userId) {
         UserAccount user = users.findById(userId).orElseThrow(UserNotFoundException::new);
         String temporaryPassword = generateTemporaryPassword();
         user.resetPassword(passwordEncoder.encode(temporaryPassword), true);
@@ -134,7 +134,7 @@ public class IdentityAuthService {
         );
     }
     @Transactional
-    public void changePassword(UUID id, String currentPassword, String newPassword) {
+    public void changePassword(@NonNull UUID id, String currentPassword, String newPassword) {
         if (newPassword == null || newPassword.length() < 8) {
             throw new IllegalArgumentException("password must contain at least 8 characters");
         }

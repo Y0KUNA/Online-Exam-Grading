@@ -19,6 +19,7 @@ public class RequestLoggingFilter implements WebFilter, Ordered {
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
     @Override
+    @SuppressWarnings("null")
     public @NonNull Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String requestId = request.getHeaders().getFirst(REQUEST_ID_HEADER);

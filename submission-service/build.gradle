@@ -15,6 +15,7 @@ dependencies {
     // content-length-range (ADR-013); AWS SDK v2 presigner supports PUT only.
     // Bumped via TICKET 02; keep io.minio here so the gateway can build the POST form.
     implementation 'io.minio:minio:8.5.17'
+    implementation 'org.apache.pdfbox:pdfbox:2.0.31'
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.testcontainers:postgresql:1.20.4'

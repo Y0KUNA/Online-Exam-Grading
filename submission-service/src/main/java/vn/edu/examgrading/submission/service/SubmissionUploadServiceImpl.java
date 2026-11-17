@@ -9,8 +9,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,6 +29,8 @@ import vn.edu.examgrading.submission.storage.ObjectKeyFactory;
 import vn.edu.examgrading.submission.storage.ObjectStorageGateway;
 import vn.edu.examgrading.submission.storage.ObjectStorageGateway.StoredObject;
 import vn.edu.examgrading.submission.storage.config.StorageProperties;
+import vn.edu.examgrading.submission.client.IdentityClient;
+import vn.edu.examgrading.submission.messaging.ValidationWorker;
 
 /**
  * JDBC-backed implementation of {@link SubmissionServiceMarker} (TICKET 04).
@@ -50,6 +52,8 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
     private final StorageProperties props;
     private final Clock clock;
     private final Duration uploadTtl;
+    private final IdentityClient identityClient;
+    private final RabbitTemplate rabbitTemplate;
 
     public SubmissionUploadServiceImpl(
             SubmissionRepositoryMarker submissionRepo,
@@ -60,6 +64,8 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
             ObjectStorageGateway gateway,
             StorageProperties props,
             Clock clock,
+            IdentityClient identityClient,
+            RabbitTemplate rabbitTemplate,
             @Value("${app.upload.ttl-minutes:10}") long uploadTtlMinutes) {
         this.submissionRepo = submissionRepo;
         this.templateRepo = templateRepo;
@@ -69,6 +75,8 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         this.gateway = gateway;
         this.props = props;
         this.clock = clock;
+        this.identityClient = identityClient;
+        this.rabbitTemplate = rabbitTemplate;
         this.uploadTtl = Duration.ofMinutes(uploadTtlMinutes);
     }
 
@@ -90,18 +98,24 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         }
 
         // 3. Reserve the submission in UPLOADING with a deterministic, PII-free key.
+        // T01: (1) insert Submission UPLOADING, commit
         UUID submissionId = UUID.randomUUID();
         String objectKey = ObjectKeyFactory.of(examId, submissionId, 1);
         Instant uploadExpiresAt = Instant.now(clock).plus(uploadTtl);
+        submissionRepo.insertUploading(submissionId, examId, request.templateId(),
+            uploadExpiresAt, declared, objectKey);
+
+        // T01: (2) call Identity submission-bindings; error 409 → rollback
         try {
-            submissionRepo.insertUploading(submissionId, examId, request.candidateId(),
-                request.templateId(), uploadExpiresAt, declared, objectKey);
-        } catch (DuplicateKeyException ex) {
-            // submission_active_candidate partial unique index.
-            throw new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.CANDIDATE_ALREADY_BOUND);
+            identityClient.createBinding(examId, submissionId, request.candidateId());
+        } catch (ResponseStatusException e) {
+            // CANDIDATE_ALREADY_BOUND or CANDIDATE_EXAM_MISMATCH
+            // Delete the submission row just created and propagate error
+            submissionRepo.deleteById(submissionId);
+            throw e;
         }
 
-        // 4. Sign the presigned POST ticket (rollback here leaves no orphan row).
+        // 4. Sign the presigned POST ticket.
         ObjectStorageGateway.UploadTicket ticket = gateway.presignPost(objectKey, declared, uploadTtl);
 
         // 5. Append SSE event.
@@ -133,7 +147,6 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         return Map.ofEntries(
             Map.entry("submissionId", s.submissionId()),
             Map.entry("examId", s.examId()),
-            Map.entry("candidateId", s.candidateId()),
             Map.entry("templateId", s.templateId()),
             Map.entry("status", s.status().name()),
             Map.entry("currentFileVersion", s.currentFileVersion()),
@@ -188,15 +201,19 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         // 6. Validate file size
         if (actualSize > maxSize) {
             gateway.delete(objectKey);
+            // T04: Release binding when FILE_TOO_LARGE
+            identityClient.releaseBinding(submissionId, "FILE_TOO_LARGE");
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, SubmissionError.FILE_TOO_LARGE);
         }
 
-        // 7. Insert exam_file row (idempotent via unique constraint on submission_id+version)
+        // 7. Update file_size_bytes in submission
+        submissionRepo.updateFileSizeBytes(submissionId, actualSize);
+
+        // 8. Insert exam_file row (idempotent via unique constraint on submission_id+type)
         if (!examFileRepo.existsCurrentOriginal(submissionId)) {
             examFileRepo.insertOriginal(
                 UUID.randomUUID(),
                 submissionId,
-                submission.currentFileVersion(),
                 actualSize,
                 objectKey
             );
@@ -221,14 +238,21 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         }
 
         // 9. Enqueue processing job
-        processingJobRepo.insertQueued(
-            UUID.randomUUID(),
-            submissionId,
-            "VALIDATE",
-            submission.currentFileVersion()
+        UUID jobId = UUID.randomUUID();
+        processingJobRepo.insertQueued(jobId, submissionId, "VALIDATE",
+            submission.currentFileVersion(), submission.templateId());
+
+        // 10. Publish validate job to RabbitMQ (schema §8 — full message fields)
+        rabbitTemplate.convertAndSend(
+            "submission.processing",
+            "validate",
+            new ValidationWorker.ValidateJobMessage(
+                ValidationWorker.ValidateJobMessage.SCHEMA_VERSION, jobId, submissionId,
+                submission.examId(), submission.templateId(), submission.currentFileVersion(),
+                false, 0, UUID.randomUUID())
         );
 
-        // 10. Append event
+        // 11. Append event
         eventRepo.append(submissionId, SubmissionStatus.UPLOADED, 0);
 
         return new CompleteSubmissionResponse(submissionId.toString(), SubmissionStatus.UPLOADED.name());

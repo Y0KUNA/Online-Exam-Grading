@@ -29,7 +29,8 @@ class S3ObjectStorageTest {
                 env("S3_ACCESS_KEY", "minioadmin"),
                 env("S3_SECRET_KEY", "change-me"),
                 env("S3_BUCKET", "original"),
-                env("S3_PUBLIC_BASE", "http://localhost:8080/storage"),
+                "anonymized",
+            env("S3_PUBLIC_BASE", "http://localhost:8080/storage"),
                 52428800L, 1024L);
         return S3ObjectStorage.create(props, Clock.systemUTC());
     }

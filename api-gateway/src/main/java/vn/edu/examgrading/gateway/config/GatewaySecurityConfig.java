@@ -21,7 +21,7 @@ public class GatewaySecurityConfig {
         authorities.setAuthorityPrefix("ROLE_");
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
-        return http.csrf(ServerHttpSecurity.CsrfSpec::disable)
+        return http.csrf(csrf -> csrf.disable())
             .authorizeExchange(exchanges -> exchanges
                 .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .pathMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()

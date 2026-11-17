@@ -17,11 +17,11 @@ public class AuthController {
     private final IdentityAuthService auth;
     public AuthController(IdentityAuthService auth) { this.auth = auth; }
     @PostMapping("/auth/login") public LoginResponse login(@Valid @RequestBody LoginRequest request) { return auth.login(request); }
-    @GetMapping("/users/me") public UserResponse me(@AuthenticationPrincipal Jwt jwt) { return UserResponse.from(auth.me(UUID.fromString(jwt.getSubject()))); }
-    @PostMapping("/users/me/change-password") @ResponseStatus(HttpStatus.NO_CONTENT)
+    @GetMapping("/users/me") @SuppressWarnings("null") public UserResponse me(@AuthenticationPrincipal Jwt jwt) { return UserResponse.from(auth.me(UUID.fromString(jwt.getSubject()))); }
+    @PostMapping("/users/me/change-password") @ResponseStatus(HttpStatus.NO_CONTENT) @SuppressWarnings("null")
     public void changePassword(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ChangePasswordRequest request) { auth.changePassword(UUID.fromString(jwt.getSubject()), request.currentPassword(), request.newPassword()); }
     @PostMapping("/users") @PreAuthorize("hasRole('EXAM_OFFICE')")
     public ResponseEntity<UserCredentialsResponse> register(@Valid @RequestBody RegisterUserRequest request) { return ResponseEntity.status(HttpStatus.CREATED).body(auth.register(request)); }
     @PostMapping("/users/{userId}/reset-password") @PreAuthorize("hasRole('EXAM_OFFICE')")
-    public UserCredentialsResponse resetPassword(@PathVariable UUID userId) { return auth.resetPassword(userId); }
+    public UserCredentialsResponse resetPassword(@PathVariable @org.springframework.lang.NonNull UUID userId) { return auth.resetPassword(userId); }
 }

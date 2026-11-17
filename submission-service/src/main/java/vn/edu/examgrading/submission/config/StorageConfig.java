@@ -21,11 +21,12 @@ public class StorageConfig {
             @Value("${app.storage.access-key}") String accessKey,
             @Value("${app.storage.secret-key}") String secretKey,
             @Value("${app.storage.bucket:original}") String bucket,
+            @Value("${app.storage.anonymized-bucket:anonymized}") String anonymizedBucket,
             @Value("${app.upload.gateway-base}") String gatewayBase,
             @Value("${app.upload.max-pdf-bytes:52428800}") long maxPdfBytes,
             @Value("${app.upload.size-tolerance-bytes:1024}") long sizeToleranceBytes) {
         return new StorageProperties(mode, endpoint, region, accessKey, secretKey, bucket,
-                gatewayBase, maxPdfBytes, sizeToleranceBytes);
+                anonymizedBucket, gatewayBase, maxPdfBytes, sizeToleranceBytes);
     }
 
     @Bean

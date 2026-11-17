@@ -42,7 +42,7 @@ echo "dummy pdf content" > test.pdf
 ```powershell
 curl -X POST http://localhost:8082/api/v1/exams/00000000-0000-0000-0000-000000000001/submissions `
   -H "Content-Type: application/json" `
-  -d '{"candidateId": "00000000-0000-0000-0000-000000000004", "templateId": "00000000-0000-0000-0000-000000000001", "fileName": "test.pdf", "fileSizeBytes": 18, "contentType": "application/json"}'
+  -d '{"templateId": "00000000-0000-0000-0000-000000000001", "fileName": "test.pdf", "fileSizeBytes": 18, "contentType": "application/pdf"}'
 ```
 
 Lưu kết quả (response JSON):
@@ -57,14 +57,15 @@ Lưu kết quả (response JSON):
   - `policy`
 
 Nếu trả về 201, submission đã được tạo với status `UPLOADING`.
+Lưu ý: candidateId không còn được truyền trong request để enforce identity boundary (FR-022, FR-025).
 
 ### 5. Upload file vào MinIO
 
-**Lưu ý**: Trong môi trường dev, có thể upload trực tiếp vào MinIO (bypass Gateway) bằng cách dùng presigned POST từ step 4.
+**Lưu ý**: Upload phải đi qua Gateway pass-through route `/storage/*` theo spec (ADR-013), không upload trực tiếp vào MinIO.
 
 ```powershell
 # Thay thế các giá trị placeholder bằng giá trị thực từ upload.fields
-curl -X POST http://localhost:9000/original `
+curl -X POST http://localhost:8080/storage/original `
   -F "key=<object_key từ init>" `
   -F "Content-Type=application/pdf" `
   -F "x-amz-date=<date từ init>" `
@@ -77,7 +78,7 @@ curl -X POST http://localhost:9000/original `
 
 Expected: `204 No Content`
 
-Nếu upload thành công, file sẽ nằm trong MinIO bucket `original` với key đã định.
+Nếu upload thành công, file sẽ nằm trong MinIO bucket `original` với key đã định. Gateway forward nguyên trạng request tới MinIO nội bộ.
 
 ### 6. Complete submission
 

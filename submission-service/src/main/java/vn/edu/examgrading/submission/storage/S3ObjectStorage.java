@@ -1,5 +1,6 @@
 package vn.edu.examgrading.submission.storage;
 
+import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PostPolicy;
 import io.minio.PutObjectArgs;
@@ -8,6 +9,8 @@ import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
@@ -17,7 +20,6 @@ import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import javax.annotation.Nonnull;
 import vn.edu.examgrading.submission.storage.config.StorageProperties;
 
 /**
@@ -53,7 +55,8 @@ public class S3ObjectStorage implements ObjectStorageGateway {
     }
 
     @Override
-    public UploadTicket presignPost(@Nonnull String objectKey, long declaredBytes, Duration ttl) {
+    @SuppressWarnings("null")
+    public UploadTicket presignPost(String objectKey, long declaredBytes, Duration ttl) {
         ZonedDateTime expiry = Instant.now(clock).atZone(ZoneOffset.UTC).plus(ttl);
         long maxSize = Math.min(declaredBytes + props.sizeToleranceBytes(), props.maxPdfBytes());
 
@@ -78,23 +81,43 @@ public class S3ObjectStorage implements ObjectStorageGateway {
 
     @Override
     public void put(String objectKey, byte[] content, String contentType) {
+        put(props.bucket(), objectKey, content, contentType);
+    }
+
+    @Override
+    public Optional<StoredObject> head(String objectKey) {
+        return head(props.bucket(), objectKey);
+    }
+
+    @Override
+    public void delete(String objectKey) {
+        delete(props.bucket(), objectKey);
+    }
+
+    @Override
+    public byte[] get(String objectKey) {
+        return get(props.bucket(), objectKey);
+    }
+
+    @Override
+    public void put(String bucket, String objectKey, byte[] content, String contentType) {
         try (ByteArrayInputStream in = new ByteArrayInputStream(content)) {
             client.putObject(PutObjectArgs.builder()
-                    .bucket(props.bucket())
+                    .bucket(bucket)
                     .object(objectKey)
                     .stream(in, content.length, -1L)
                     .contentType(contentType)
                     .build());
         } catch (Exception e) {
-            throw new StorageUnavailableException("put failed for " + objectKey, e);
+            throw new StorageUnavailableException("put failed for " + bucket + "/" + objectKey, e);
         }
     }
 
     @Override
-    public Optional<StoredObject> head(String objectKey) {
+    public Optional<StoredObject> head(String bucket, String objectKey) {
         try {
             StatObjectResponse stat = client.statObject(StatObjectArgs.builder()
-                    .bucket(props.bucket())
+                    .bucket(bucket)
                     .object(objectKey)
                     .build());
             return Optional.of(new StoredObject(objectKey, stat.size(), null));
@@ -102,21 +125,40 @@ public class S3ObjectStorage implements ObjectStorageGateway {
             if ("NoSuchKey".equals(e.errorResponse().code())) {
                 return Optional.empty();
             }
-            throw new StorageUnavailableException("head failed for " + objectKey, e);
+            throw new StorageUnavailableException("head failed for " + bucket + "/" + objectKey, e);
         } catch (Exception e) {
-            throw new StorageUnavailableException("head failed for " + objectKey, e);
+            throw new StorageUnavailableException("head failed for " + bucket + "/" + objectKey, e);
         }
     }
 
     @Override
-    public void delete(String objectKey) {
+    public void delete(String bucket, String objectKey) {
         try {
             client.removeObject(RemoveObjectArgs.builder()
-                    .bucket(props.bucket())
+                    .bucket(bucket)
                     .object(objectKey)
                     .build());
         } catch (Exception e) {
-            throw new StorageUnavailableException("delete failed for " + objectKey, e);
+            throw new StorageUnavailableException("delete failed for " + bucket + "/" + objectKey, e);
+        }
+    }
+
+    @Override
+    public byte[] get(String bucket, String objectKey) {
+        try (InputStream in = client.getObject(GetObjectArgs.builder()
+                .bucket(bucket)
+                .object(objectKey)
+                .build());
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            in.transferTo(out);
+            return out.toByteArray();
+        } catch (ErrorResponseException e) {
+            if ("NoSuchKey".equals(e.errorResponse().code())) {
+                throw new StorageUnavailableException("object not found: " + bucket + "/" + objectKey, e);
+            }
+            throw new StorageUnavailableException("get failed for " + bucket + "/" + objectKey, e);
+        } catch (Exception e) {
+            throw new StorageUnavailableException("get failed for " + bucket + "/" + objectKey, e);
         }
     }
 

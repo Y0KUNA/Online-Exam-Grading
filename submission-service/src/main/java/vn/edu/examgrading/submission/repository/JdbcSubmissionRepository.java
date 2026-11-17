@@ -27,26 +27,42 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
     }
 
     @Override
-    public void insertUploading(UUID submissionId, UUID examId, UUID candidateId, UUID templateId,
+    public void insertUploading(UUID submissionId, UUID examId, UUID templateId,
             Instant uploadExpiresAt, long declaredFileSizeBytes, String objectKey) {
         String sql = """
             INSERT INTO submission (
-                submission_id, exam_id, candidate_id, template_id, status,
+                submission_id, exam_id, template_id, status,
                 current_file_version, progress, upload_expires_at,
                 declared_file_size_bytes, object_key
-            ) VALUES (?, ?, ?, ?, 'UPLOADING', 1, 0, ?, ?, ?)
+            ) VALUES (?, ?, ?, 'UPLOADING', 1, 0, ?, ?, ?)
             """;
         jdbcTemplate.update(sql,
-            submissionId, examId, candidateId, templateId,
+            submissionId, examId, templateId,
             toOffsetDateTimeUtc(uploadExpiresAt),
             declaredFileSizeBytes, objectKey
         );
     }
 
     @Override
+    public int updateFileSizeBytes(UUID submissionId, long fileSizeBytes) {
+        String sql = """
+            UPDATE submission
+            SET file_size_bytes = ?
+            WHERE submission_id = ?
+            """;
+        return jdbcTemplate.update(sql, fileSizeBytes, submissionId);
+    }
+
+    @Override
+    public void deleteById(UUID submissionId) {
+        String sql = "DELETE FROM submission WHERE submission_id = ?";
+        jdbcTemplate.update(sql, submissionId);
+    }
+
+    @Override
     public Optional<Submission> findById(UUID submissionId) {
         String sql = """
-            SELECT submission_id, exam_id, candidate_id, template_id, status,
+            SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
                    declared_file_size_bytes, object_key, failure_code,
                    version, updated_at
@@ -60,7 +76,7 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
     @Override
     public List<Submission> findByExam(UUID examId) {
         String sql = """
-            SELECT submission_id, exam_id, candidate_id, template_id, status,
+            SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
                    declared_file_size_bytes, object_key, failure_code,
                    version, updated_at
@@ -84,7 +100,7 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
     @Override
     public List<Submission> findExpiredUploading(Instant now) {
         String sql = """
-            SELECT submission_id, exam_id, candidate_id, template_id, status,
+            SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
                    declared_file_size_bytes, object_key, failure_code,
                    version, updated_at
@@ -98,13 +114,13 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
         return (ResultSet rs, int rowNum) -> new Submission(
             rs.getObject("submission_id", UUID.class),
             rs.getObject("exam_id", UUID.class),
-            rs.getObject("candidate_id", UUID.class),
             rs.getObject("template_id", UUID.class),
             SubmissionStatus.valueOf(rs.getString("status")),
             rs.getInt("current_file_version"),
             rs.getInt("progress"),
             toInstant(rs.getObject("upload_expires_at", OffsetDateTime.class)),
             (Long) rs.getObject("declared_file_size_bytes"),
+            (Long) rs.getObject("file_size_bytes"),
             rs.getString("object_key"),
             rs.getString("failure_code"),
             rs.getInt("version"),

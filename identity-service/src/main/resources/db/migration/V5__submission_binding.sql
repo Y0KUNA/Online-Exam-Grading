@@ -5,6 +5,12 @@
 
 CREATE TYPE binding_status AS ENUM ('ACTIVE', 'RELEASED');
 
+-- A binding must point to the candidate in the same exam. PostgreSQL requires
+-- the referenced tuple to be explicitly unique, even though candidate_id alone
+-- is already the primary key.
+ALTER TABLE candidate
+    ADD CONSTRAINT uq_candidate_id_exam UNIQUE (candidate_id, exam_id);
+
 CREATE TABLE submission_binding (
     binding_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id uuid NOT NULL,
@@ -13,10 +19,8 @@ CREATE TABLE submission_binding (
     status binding_status NOT NULL DEFAULT 'ACTIVE',
     created_at timestamptz NOT NULL DEFAULT now(),
     released_at timestamptz,
-    CONSTRAINT fk_submission_binding_candidate FOREIGN KEY (candidate_id)
-        REFERENCES candidate(candidate_id) ON DELETE RESTRICT,
-    CONSTRAINT fk_submission_binding_exam FOREIGN KEY (exam_id)
-        REFERENCES candidate(exam_id) ON DELETE RESTRICT
+    CONSTRAINT fk_submission_binding_candidate_exam FOREIGN KEY (candidate_id, exam_id)
+        REFERENCES candidate(candidate_id, exam_id) ON DELETE RESTRICT
 );
 
 -- Index to enforce: one candidate can have at most one ACTIVE binding per exam

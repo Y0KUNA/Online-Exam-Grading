@@ -20,6 +20,25 @@ paths:
       summary: Office submission status projection for an exam
       responses:
         '200': { description: Submission list }
+    post:
+      summary: Initialize an ORIGINAL PDF upload (EXAM_OFFICE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidateId, templateId, fileName, fileSizeBytes, contentType]
+      responses:
+        '201': { description: Submission id and presigned POST form routed through Gateway }
+        '422': { description: Invalid PDF metadata }
+  /api/v1/submissions/{submissionId}/complete:
+    parameters: [{ name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      summary: Confirm direct storage upload and queue validation (EXAM_OFFICE)
+      responses:
+        '200': { description: Submission is UPLOADED and validation is queued }
+        '409': { description: Upload missing, expired, or no longer completable }
   /api/v1/reviews:
     get:
       summary: Review projection for EXAM_OFFICE or COUNCIL; excludes candidate identity

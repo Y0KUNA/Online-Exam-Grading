@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.lang.NonNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,7 +41,8 @@ public class CandidateController {
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> importRoster(@PathVariable UUID examId, @RequestPart("file") MultipartFile file) throws IOException {
-        if (file.isEmpty() || file.getOriginalFilename() == null || !file.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".csv")) {
+        String filename = file.getOriginalFilename();
+        if (file.isEmpty() || filename == null || !filename.toLowerCase(Locale.ROOT).endsWith(".csv")) {
             throw new IllegalArgumentException("file must be a non-empty CSV file");
         }
         List<CsvRecord> records = parseCsv(new String(file.getBytes(), StandardCharsets.UTF_8));

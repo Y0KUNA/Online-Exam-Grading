@@ -10,3 +10,17 @@ spring:
   rabbitmq.addresses: ${RABBITMQ_URL:amqp://localhost:5672}
 management.endpoints.web.exposure.include: health,info
 app.internal.hmac-secret: ${IDENTITY_HMAC_SECRET:replace-with-a-32-byte-minimum-secret}
+app:
+  storage:
+    mode: ${STORAGE_MODE:s3}
+    endpoint: ${S3_INTERNAL_ENDPOINT:http://localhost:9000}
+    region: ${S3_REGION:us-east-1}
+    access-key: ${S3_ACCESS_KEY:minioadmin}
+    secret-key: ${S3_SECRET_KEY:change-me}
+    bucket: ${S3_BUCKET:original}
+  upload:
+    # Presigned POST urls are rewritten onto this public Gateway base (never expose the MinIO host).
+    gateway-base: ${S3_PUBLIC_BASE:http://localhost:8080/storage}
+    max-pdf-bytes: ${MAX_PDF_BYTES:52428800}
+    ttl-minutes: ${UPLOAD_TTL_MINUTES:10}
+    size-tolerance-bytes: ${UPLOAD_SIZE_TOLERANCE_BYTES:1024}

@@ -9,6 +9,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -48,7 +49,7 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
     }
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+    public @NonNull Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
         if (!path.equals(STORAGE_PREFIX) && !path.startsWith(STORAGE_PREFIX + "/")) {
             return chain.filter(exchange);
@@ -100,7 +101,7 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
         return allowStorageRequest(exchange, chain);
     }
 
-    private boolean hasOnlyAllowedSignedQuery(ServerWebExchange exchange) {
+    private boolean hasOnlyAllowedSignedQuery(@NonNull ServerWebExchange exchange) {
         return exchange.getRequest().getQueryParams().keySet().stream()
             .map(String::toLowerCase)
             .allMatch(ALLOWED_SIGNED_QUERY_KEYS::contains);

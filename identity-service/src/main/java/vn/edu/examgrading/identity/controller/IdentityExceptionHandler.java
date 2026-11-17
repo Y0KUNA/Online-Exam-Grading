@@ -55,8 +55,14 @@ public class IdentityExceptionHandler {
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error", request);
     }
 
+    @SuppressWarnings("null")
     private ResponseEntity<ApiError> error(HttpStatus status, String code, String message, WebRequest request) {
-        String id = request.getHeader("X-Request-Id"); try { UUID.fromString(id); } catch (RuntimeException ignored) { id = UUID.randomUUID().toString(); }
+        String id = request.getHeader("X-Request-Id");
+        try {
+            UUID.fromString(id);
+        } catch (RuntimeException ignored) {
+            id = UUID.randomUUID().toString();
+        }
         return ResponseEntity.status(status).body(new ApiError(code, message, id, Map.of()));
     }
 }

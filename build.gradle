@@ -26,7 +26,7 @@ subprojects {
         doLast {
             fileTree(projectDir) { include 'src/**/*.java', 'src/**/*.yml', 'src/**/*.yaml' }.each { file ->
                 file.readLines('UTF-8').eachWithIndex { line, index ->
-                    if (line ==~ /.*[ \\t]+$/) throw new GradleException("Trailing whitespace: ${file}:${index + 1}")
+                    if (line ==~ /.*[ \t]+$/) throw new GradleException("Trailing whitespace: ${file}:${index + 1}")
                 }
             }
         }

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -18,7 +19,7 @@ public class RequestLoggingFilter implements WebFilter, Ordered {
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+    public @NonNull Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String requestId = request.getHeaders().getFirst(REQUEST_ID_HEADER);
         if (requestId == null || requestId.isBlank()) {

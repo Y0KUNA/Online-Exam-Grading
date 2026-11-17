@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -31,7 +32,7 @@ public final class StorageRateLimitFilter implements WebFilter, Ordered {
         this.clock = clock;
     }
 
-    @Override public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+    @Override public @NonNull Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         if (!exchange.getRequest().getPath().value().startsWith("/storage/")) return chain.filter(exchange);
         long minute = clock.millis() / 60_000L;
         String client = String.valueOf(exchange.getRequest().getRemoteAddress()) + ':' + minute;

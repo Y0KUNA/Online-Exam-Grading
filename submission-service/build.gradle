@@ -11,9 +11,20 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
+    // MinIO Java SDK: only client that can sign a presigned POST policy with
+    // content-length-range (ADR-013); AWS SDK v2 presigner supports PUT only.
+    // Bumped via TICKET 02; keep io.minio here so the gateway can build the POST form.
+    implementation 'io.minio:minio:8.5.17'
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.testcontainers:postgresql:1.20.4'
     testImplementation 'org.testcontainers:rabbitmq:1.20.4'
     testImplementation 'org.testcontainers:jdbc:1.20.4'
+}
+
+// Dev hosts here default to the legacy Java tz id "Asia/Saigon", which the PG
+// JDBC driver sends on connect and Postgres rejects. Pin the bootRun JVM to UTC
+// so a local bootRun (Flyway + HikariCP) can open connections.
+bootRun {
+    jvmArgs '-Duser.timezone=UTC'
 }

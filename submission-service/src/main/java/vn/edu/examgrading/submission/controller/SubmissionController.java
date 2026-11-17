@@ -3,6 +3,7 @@ package vn.edu.examgrading.submission.controller;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,8 +32,9 @@ public class SubmissionController {
      */
     @PostMapping("/exams/{examId}/submissions")
     public ResponseEntity<InitSubmissionResponse> init(@PathVariable UUID examId,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @RequestBody InitSubmissionRequest request) {
-        InitSubmissionResponse body = service.init(examId, request, null);
+        InitSubmissionResponse body = service.init(examId, request, null, authorization);
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 

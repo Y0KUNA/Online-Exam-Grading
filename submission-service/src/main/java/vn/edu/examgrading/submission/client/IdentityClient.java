@@ -2,7 +2,11 @@ package vn.edu.examgrading.submission.client;
 
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import vn.edu.examgrading.submission.dto.PseudonymRequest;
@@ -33,11 +37,20 @@ public class IdentityClient {
      * Throws exception if candidate already bound to another submission.
      */
     public void createBinding(UUID examId, UUID submissionId, UUID candidateId) {
+        createBinding(examId, submissionId, candidateId, null);
+    }
+
+    public void createBinding(UUID examId, UUID submissionId, UUID candidateId, String authorization) {
         String url = identityBaseUrl + "/internal/v1/submission-bindings";
         SubmissionBindingRequest request = new SubmissionBindingRequest(examId, submissionId, candidateId);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (authorization != null && !authorization.isBlank()) {
+            headers.set(HttpHeaders.AUTHORIZATION, authorization);
+        }
 
         try {
-            restTemplate.postForEntity(url, request, Void.class);
+            restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(request, headers), Void.class);
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.CONFLICT) {
                 // CANDIDATE_ALREADY_BOUND or CANDIDATE_EXAM_MISMATCH

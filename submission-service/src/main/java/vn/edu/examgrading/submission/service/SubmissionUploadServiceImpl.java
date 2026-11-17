@@ -82,7 +82,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
     @Override
     @Transactional
-    public InitSubmissionResponse init(UUID examId, InitSubmissionRequest request, UUID actorId) {
+    public InitSubmissionResponse init(UUID examId, InitSubmissionRequest request, UUID actorId, String authorization) {
         // 1. Content-type + declared-size guards first — reject before touching the DB.
         if (!PDF_CONTENT_TYPE.equalsIgnoreCase(request.contentType())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, SubmissionError.UNSUPPORTED_CONTENT_TYPE);
@@ -107,7 +107,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
         // T01: (2) call Identity submission-bindings; error 409 → rollback
         try {
-            identityClient.createBinding(examId, submissionId, request.candidateId());
+            identityClient.createBinding(examId, submissionId, request.candidateId(), authorization);
         } catch (ResponseStatusException e) {
             // CANDIDATE_ALREADY_BOUND or CANDIDATE_EXAM_MISMATCH
             // Delete the submission row just created and propagate error

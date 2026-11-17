@@ -1,5 +1,7 @@
 import { API_BASE_URL, ApiError, request, upload } from "./client";
 
+export const DEFAULT_PAPER_TEMPLATE_ID = "0a809b8a-4b10-4b64-9305-000000000001";
+
 export const examApi = {
   listExams: (options) => request("/api/v1/exams", options),
   createExam: (exam, options) => request("/api/v1/exams", { ...options, method: "POST", body: exam }),
@@ -16,7 +18,7 @@ export const examApi = {
       method: "POST",
       body: {
         candidateId,
-        templateId,
+        templateId: templateId ?? DEFAULT_PAPER_TEMPLATE_ID,
         fileName: file.name,
         fileSizeBytes: file.size,
         contentType: file.type || "application/pdf",

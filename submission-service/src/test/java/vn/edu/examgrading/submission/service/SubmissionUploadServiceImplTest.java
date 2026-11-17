@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,10 +14,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import vn.edu.examgrading.submission.domain.Submission;
 import vn.edu.examgrading.submission.domain.SubmissionError;
 import vn.edu.examgrading.submission.domain.SubmissionStatus;
+import vn.edu.examgrading.submission.dto.CompleteSubmissionResponse;
 import vn.edu.examgrading.submission.dto.InitSubmissionRequest;
 import vn.edu.examgrading.submission.dto.InitSubmissionResponse;
+import vn.edu.examgrading.submission.messaging.ValidationWorker;
 import vn.edu.examgrading.submission.repository.ExamFileRepository;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository;
 import vn.edu.examgrading.submission.repository.ProcessingJobRepository;
@@ -25,9 +29,11 @@ import vn.edu.examgrading.submission.repository.SubmissionRepositoryMarker;
 import vn.edu.examgrading.submission.storage.InMemoryObjectStorage;
 import vn.edu.examgrading.submission.storage.ObjectStorageGateway;
 import vn.edu.examgrading.submission.storage.config.StorageProperties;
+import vn.edu.examgrading.submission.client.IdentityClient;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -54,6 +60,12 @@ class SubmissionUploadServiceImplTest {
     @Mock
     private ProcessingJobRepository processingJobRepo;
 
+    @Mock
+    private IdentityClient identityClient;
+
+    @Mock
+    private org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
+
     private ObjectStorageGateway gateway;
     private StorageProperties props;
     private Clock clock;
@@ -74,6 +86,7 @@ class SubmissionUploadServiceImplTest {
             "minioadmin",
             "change-me",
             "original",
+            "anonymized",
             "http://localhost:8080/storage",
             52428800L,
             1024L
@@ -81,7 +94,7 @@ class SubmissionUploadServiceImplTest {
         clock = Clock.systemUTC();
         service = new SubmissionUploadServiceImpl(
             submissionRepo, templateRepo, eventRepo, examFileRepo, processingJobRepo,
-            gateway, props, clock, 10);
+            gateway, props, clock, identityClient, rabbitTemplate, 10);
     }
 
     @Test
@@ -101,8 +114,9 @@ class SubmissionUploadServiceImplTest {
         assertTrue(response.upload().fields().containsKey("key"));
         assertNotNull(response.uploadExpiresAt());
 
-        verify(submissionRepo).insertUploading(any(UUID.class), eq(examId), eq(candidateId),
+        verify(submissionRepo).insertUploading(any(UUID.class), eq(examId),
             eq(templateId), any(Instant.class), eq(52428800L), any(String.class));
+        verify(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId));
         verify(eventRepo).append(any(UUID.class), eq(SubmissionStatus.UPLOADING), eq(0));
     }
 
@@ -117,7 +131,7 @@ class SubmissionUploadServiceImplTest {
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, ex.getStatusCode());
         assertEquals(SubmissionError.UNSUPPORTED_CONTENT_TYPE, ex.getReason());
 
-        verify(submissionRepo, never()).insertUploading(any(), any(), any(), any(), any(), anyLong(), any());
+        verify(submissionRepo, never()).insertUploading(any(), any(), any(), any(), anyLong(), any());
     }
 
     @Test
@@ -159,11 +173,24 @@ class SubmissionUploadServiceImplTest {
     }
 
     @Test
-    void init_withDuplicateCandidate_throws409() {
+    void init_withDuplicateKey_throwsException() {
         when(templateRepo.existsActive(templateId)).thenReturn(true);
         doThrow(new DuplicateKeyException("duplicate key")).when(submissionRepo)
-            .insertUploading(any(UUID.class), eq(examId), eq(candidateId), eq(templateId),
+            .insertUploading(any(UUID.class), eq(examId), eq(templateId),
                 any(Instant.class), anyLong(), any(String.class));
+
+        InitSubmissionRequest request = new InitSubmissionRequest(
+            candidateId, templateId, "test.pdf", 52428800L, "application/pdf");
+
+        assertThrows(DuplicateKeyException.class,
+            () -> service.init(examId, request, actorId));
+    }
+
+    @Test
+    void init_withCandidateAlreadyBound_throws409AndRollsBack() {
+        when(templateRepo.existsActive(templateId)).thenReturn(true);
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "CANDIDATE_ALREADY_BOUND"))
+            .when(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId));
 
         InitSubmissionRequest request = new InitSubmissionRequest(
             candidateId, templateId, "test.pdf", 52428800L, "application/pdf");
@@ -172,12 +199,28 @@ class SubmissionUploadServiceImplTest {
             () -> service.init(examId, request, actorId));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
-        assertEquals(SubmissionError.CANDIDATE_ALREADY_BOUND, ex.getReason());
+        verify(submissionRepo).deleteById(any(UUID.class));
+    }
+
+    @Test
+    void init_withCandidateExamMismatch_throws409AndRollsBack() {
+        when(templateRepo.existsActive(templateId)).thenReturn(true);
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "CANDIDATE_EXAM_MISMATCH"))
+            .when(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId));
+
+        InitSubmissionRequest request = new InitSubmissionRequest(
+            candidateId, templateId, "test.pdf", 52428800L, "application/pdf");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> service.init(examId, request, actorId));
+
+        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        verify(submissionRepo).deleteById(any(UUID.class));
     }
 
     @Test
     void listForExam_returnsSubmissions() {
-        when(submissionRepo.findByExam(examId)).thenReturn(java.util.List.of());
+        when(submissionRepo.findByExam(examId)).thenReturn(List.of());
 
         List<Map<String, Object>> result = service.listForExam(examId);
 
@@ -188,12 +231,60 @@ class SubmissionUploadServiceImplTest {
     @Test
     void detail_notFound_throws404() {
         UUID submissionId = UUID.randomUUID();
-        when(submissionRepo.findById(submissionId)).thenReturn(java.util.Optional.empty());
+        when(submissionRepo.findById(submissionId)).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
             () -> service.detail(submissionId));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         assertEquals(SubmissionError.INVALID_STATE, ex.getReason());
+    }
+
+    @Test
+    void complete_withUploadedFile_publishesFullValidateMessage() {
+        UUID submissionId = UUID.randomUUID();
+        String objectKey = "exams/" + examId + "/" + submissionId + "/v1.pdf";
+        Submission submission = new Submission(
+            submissionId, examId, templateId, SubmissionStatus.UPLOADING,
+            1, 0, Instant.now().plusSeconds(600),
+            100L, null, objectKey, null, 0, Instant.now());
+        when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(examFileRepo.existsCurrentOriginal(submissionId)).thenReturn(false);
+        when(submissionRepo.transition(submissionId, SubmissionStatus.UPLOADING,
+            SubmissionStatus.UPLOADED, 0)).thenReturn(1);
+        gateway.put(objectKey, new byte[100], "application/pdf");
+
+        CompleteSubmissionResponse response = service.complete(submissionId);
+
+        assertEquals(submissionId.toString(), response.submissionId());
+        assertEquals("UPLOADED", response.status());
+        verify(processingJobRepo).insertQueued(any(UUID.class), eq(submissionId), eq("VALIDATE"), eq(1), eq(templateId));
+        // §8: message must carry the full schema — no pseudonym/candidateId.
+        verify(rabbitTemplate).convertAndSend(eq("submission.processing"), eq("validate"),
+            argThat((Object msg) -> msg instanceof ValidationWorker.ValidateJobMessage m
+                && m.schemaVersion() == ValidationWorker.ValidateJobMessage.SCHEMA_VERSION
+                && m.submissionId().equals(submissionId)
+                && m.examId().equals(examId)
+                && m.templateId().equals(templateId)
+                && m.fileVersion() == 1
+                && !m.force()
+                && m.attempt() == 0
+                && m.correlationId() != null));
+        verify(eventRepo).append(submissionId, SubmissionStatus.UPLOADED, 0);
+    }
+
+    @Test
+    void complete_whenAlreadyUploaded_isIdempotent() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = new Submission(
+            submissionId, examId, templateId, SubmissionStatus.UPLOADED,
+            1, 0, null, 100L, null, "key", null, 0, Instant.now());
+        when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        CompleteSubmissionResponse response = service.complete(submissionId);
+
+        assertEquals("UPLOADED", response.status());
+        verifyNoInteractions(rabbitTemplate);
+        verify(processingJobRepo, never()).insertQueued(any(), any(), any(), anyInt(), any());
     }
 }

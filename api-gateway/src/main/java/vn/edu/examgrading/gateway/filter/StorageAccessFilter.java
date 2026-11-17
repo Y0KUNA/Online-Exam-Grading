@@ -49,6 +49,7 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
     }
 
     @Override
+    @SuppressWarnings("null")
     public @NonNull Mono<Void> filter(@NonNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
         if (!path.equals(STORAGE_PREFIX) && !path.startsWith(STORAGE_PREFIX + "/")) {
@@ -101,6 +102,7 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
         return allowStorageRequest(exchange, chain);
     }
 
+    @SuppressWarnings("null")
     private boolean hasOnlyAllowedSignedQuery(@NonNull ServerWebExchange exchange) {
         return exchange.getRequest().getQueryParams().keySet().stream()
             .map(String::toLowerCase)

@@ -15,11 +15,11 @@ import vn.edu.examgrading.submission.domain.SubmissionStatus;
 public interface SubmissionRepositoryMarker {
 
     /**
-     * Inserts a row in UPLOADING. Implementations surface the unique-index clash
-     * (exam, candidate) as a {@code DuplicateKeyException} for the service to map to
-     * 409 CANDIDATE_ALREADY_BOUND. {@code uploadExpiresAt} is bound as UTC by the impl.
+     * Inserts a row in UPLOADING. {@code uploadExpiresAt} is bound as UTC by the impl.
+     * Note: candidateId is NOT stored in submission to enforce identity boundary (FR-022, FR-025).
+     * Candidate-submission mapping is handled by Identity Service via pseudonym.
      */
-    void insertUploading(UUID submissionId, UUID examId, UUID candidateId, UUID templateId,
+    void insertUploading(UUID submissionId, UUID examId, UUID templateId,
             Instant uploadExpiresAt, long declaredFileSizeBytes, String objectKey);
 
     Optional<Submission> findById(UUID submissionId);
@@ -31,4 +31,10 @@ public interface SubmissionRepositoryMarker {
 
     /** UPLOADING rows whose upload window has elapsed (feeds the cleanup job). */
     List<Submission> findExpiredUploading(Instant now);
+
+    /** Update file_size_bytes after complete() verifies HEAD object. */
+    int updateFileSizeBytes(UUID submissionId, long fileSizeBytes);
+
+    /** Delete submission by ID (used for rollback when binding fails). */
+    void deleteById(UUID submissionId);
 }

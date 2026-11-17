@@ -29,7 +29,19 @@ public interface ObjectStorageGateway {
     /** HEAD the object; empty when it does not exist. sha256 is filled later at VALIDATING. */
     Optional<StoredObject> head(String objectKey);
 
+    /** GET the object content as bytes. Used by validation worker. */
+    byte[] get(String objectKey);
+
     void delete(String objectKey);
+
+    /** Bucket-scoped variants used by the ANONYMIZE worker (D-05: separate buckets). */
+    void put(String bucket, String objectKey, byte[] content, String contentType);
+
+    Optional<StoredObject> head(String bucket, String objectKey);
+
+    byte[] get(String bucket, String objectKey);
+
+    void delete(String bucket, String objectKey);
 
     /** Form URL plus fields a client must POST verbatim to upload the object. */
     record UploadTicket(String url, Map<String, String> fields, Instant expiresAt) { }

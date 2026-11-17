@@ -13,6 +13,7 @@ public record StorageProperties(
         String accessKey,
         String secretKey,
         String bucket,
+        String anonymizedBucket,
         String gatewayBase,
         long maxPdfBytes,
         long sizeToleranceBytes) {

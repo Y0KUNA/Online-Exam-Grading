@@ -1,0 +1,124 @@
+openapi: 3.0.3
+info:
+  title: Online Exam Grading Identity Service
+  version: 0.1.0
+  description: Internal endpoints for Identity service. Not exposed through Gateway.
+paths:
+  /internal/v1/submission-bindings:
+    post:
+      summary: Create or retrieve submission binding
+      description: |
+        Maps a submission to a candidate for an exam. Idempotent: if an ACTIVE binding
+        already exists for the submissionId, returns 200 with existing binding.
+        Validates that candidate belongs to exam and candidate has no other ACTIVE binding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionBindingRequest'
+      responses:
+        '201':
+          description: Binding created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionBindingResponse'
+        '200':
+          description: Binding already exists (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionBindingResponse'
+        '409':
+          description: Conflict - candidate already bound or candidate-exam mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/submission-bindings/{submissionId}/release:
+    post:
+      summary: Release submission binding
+      description: |
+        Marks a binding as RELEASED. Idempotent: no-op if already RELEASED or not found.
+        Called when upload is abandoned or file is too large.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionBindingReleaseRequest'
+      responses:
+        '204':
+          description: Binding released (or already released)
+        '422':
+          description: Invalid reason
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    SubmissionBindingRequest:
+      type: object
+      required:
+        - examId
+        - submissionId
+        - candidateId
+      properties:
+        examId:
+          type: string
+          format: uuid
+          description: Exam UUID
+        submissionId:
+          type: string
+          format: uuid
+          description: Submission UUID
+        candidateId:
+          type: string
+          format: uuid
+          description: Candidate UUID
+    SubmissionBindingResponse:
+      type: object
+      required:
+        - bindingId
+        - status
+      properties:
+        bindingId:
+          type: string
+          format: uuid
+          description: Binding UUID
+        status:
+          type: string
+          enum: [ACTIVE, RELEASED]
+          description: Binding status
+    SubmissionBindingReleaseRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          enum: [UPLOAD_ABANDONED, FILE_TOO_LARGE]
+          description: Reason for releasing the binding
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error code or message

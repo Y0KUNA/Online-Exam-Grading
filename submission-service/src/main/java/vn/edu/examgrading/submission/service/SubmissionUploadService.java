@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -71,21 +70,17 @@ public class SubmissionUploadService {
         }
 
         // 3. Reserve the submission in UPLOADING with a deterministic, PII-free key.
+        // Note: candidateId is NOT stored in submission to enforce identity boundary (FR-022, FR-025).
         UUID submissionId = UUID.randomUUID();
         String objectKey = ObjectKeyFactory.of(examId, submissionId, 1);
         Instant uploadExpiresAt = Instant.now(clock).plus(uploadTtl);
-        try {
-            jdbc.update(
-                    "insert into submission (submission_id, exam_id, candidate_id, template_id, status, "
-                            + "current_file_version, progress, upload_expires_at, updated_at, version, "
-                            + "declared_file_size_bytes, object_key) "
-                            + "values (?,?,?,?,'UPLOADING',1,0,?,now(),0,?,?)",
-                    submissionId, examId, request.candidateId(), request.templateId(),
-                    uploadExpiresAt.atOffset(ZoneOffset.UTC), declared, objectKey);
-        } catch (DuplicateKeyException ex) {
-            // submission_active_candidate partial unique index.
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "CANDIDATE_ALREADY_BOUND");
-        }
+        jdbc.update(
+                "insert into submission (submission_id, exam_id, template_id, status, "
+                        + "current_file_version, progress, upload_expires_at, updated_at, version, "
+                        + "declared_file_size_bytes, object_key) "
+                        + "values (?,?,?,'UPLOADING',1,0,?,now(),0,?,?)",
+                submissionId, examId, request.templateId(),
+                uploadExpiresAt.atOffset(ZoneOffset.UTC), declared, objectKey);
 
         // 4. Sign the presigned POST ticket (rollback here leaves no orphan row).
         ObjectStorageGateway.UploadTicket ticket = gateway.presignPost(objectKey, declared, uploadTtl);

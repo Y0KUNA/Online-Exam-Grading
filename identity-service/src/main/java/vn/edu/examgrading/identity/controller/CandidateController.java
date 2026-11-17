@@ -11,7 +11,6 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.lang.NonNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -54,7 +53,7 @@ public class CandidateController {
         int inserted = 0;
         List<Map<String, Object>> errors = new ArrayList<>();
         for (CsvRecord record : records) {
-            if (record.values().stream().allMatch(String::isBlank)) continue;
+            if (record.values().stream().allMatch(value -> value.isBlank())) continue;
             try {
                 String number = required(value(record.values(), columns, "candidateNumber"), "candidateNumber");
                 String fullName = required(value(record.values(), columns, "fullName"), "fullName");

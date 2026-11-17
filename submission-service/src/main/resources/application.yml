@@ -8,6 +8,8 @@ spring:
   jpa.hibernate.ddl-auto: validate
   flyway.enabled: true
   rabbitmq.addresses: ${RABBITMQ_URL:amqp://localhost:5672}
+  rabbitmq.publisher-confirm-type: correlated
+  rabbitmq.publisher-returns: true
 management.endpoints.web.exposure.include: health,info
 app.internal.hmac-secret: ${IDENTITY_HMAC_SECRET:replace-with-a-32-byte-minimum-secret}
 app:
@@ -18,9 +20,17 @@ app:
     access-key: ${S3_ACCESS_KEY:minioadmin}
     secret-key: ${S3_SECRET_KEY:change-me}
     bucket: ${S3_BUCKET:original}
+    anonymized-bucket: ${S3_ANONYMIZED_BUCKET:anonymized}
   upload:
     # Presigned POST urls are rewritten onto this public Gateway base (never expose the MinIO host).
     gateway-base: ${S3_PUBLIC_BASE:http://localhost:8080/storage}
     max-pdf-bytes: ${MAX_PDF_BYTES:52428800}
     ttl-minutes: ${UPLOAD_TTL_MINUTES:10}
     size-tolerance-bytes: ${UPLOAD_SIZE_TOLERANCE_BYTES:1024}
+  pdf:
+    # §7.5 untrusted-PDF resource limits (worker side, PageMasker/ValidationWorker).
+    render-dpi: ${PDF_RENDER_DPI:200}
+    min-render-dpi: ${PDF_MIN_RENDER_DPI:100}
+    max-render-pixels: ${PDF_MAX_RENDER_PIXELS:40000000}
+    max-page-points: ${PDF_MAX_PAGE_POINTS:14400}
+    job-timeout-seconds: ${PDF_JOB_TIMEOUT_SECONDS:120}

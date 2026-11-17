@@ -10,6 +10,15 @@ spring:
   security.oauth2.resourceserver.jwt.jwk-set-uri: ${JWT_JWKS_URI:http://localhost:8081/.well-known/jwks.json}
   cloud:
     gateway:
+      httpclient:
+        # Enable streaming for large file uploads (ADR-013)
+        proxy-type: reactive
+        connect-timeout: 5000
+        response-timeout: 30s
+        pool:
+          type: elastic
+          max-connections: 500
+          acquire-timeout: 30000
       globalcors:
         cors-configurations:
           '[/**]':

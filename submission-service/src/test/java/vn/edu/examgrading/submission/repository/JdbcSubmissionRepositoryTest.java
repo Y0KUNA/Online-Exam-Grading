@@ -27,7 +27,6 @@ class JdbcSubmissionRepositoryTest {
     private JdbcTemplate jdbcTemplate;
     private JdbcSubmissionRepository repository;
     private final UUID examId = UUID.randomUUID();
-    private final UUID candidateId = UUID.randomUUID();
     private final UUID templateId = UUID.randomUUID();
 
     private void setupConnection() {
@@ -50,7 +49,7 @@ class JdbcSubmissionRepositoryTest {
         long declaredBytes = 52428800L;
         String objectKey = examId + "/" + submissionId + "/v1.pdf";
 
-        repository.insertUploading(submissionId, examId, candidateId, templateId,
+        repository.insertUploading(submissionId, examId, templateId,
             uploadExpiresAt, declaredBytes, objectKey);
 
         Optional<Submission> found = repository.findById(submissionId);
@@ -59,7 +58,6 @@ class JdbcSubmissionRepositoryTest {
         Submission submission = found.get();
         assertEquals(submissionId, submission.submissionId());
         assertEquals(examId, submission.examId());
-        assertEquals(candidateId, submission.candidateId());
         assertEquals(templateId, submission.templateId());
         assertEquals(SubmissionStatus.UPLOADING, submission.status());
         assertEquals(1, submission.currentFileVersion());
@@ -76,11 +74,11 @@ class JdbcSubmissionRepositoryTest {
         UUID submissionId2 = UUID.randomUUID();
         Instant uploadExpiresAt = Instant.now().plusSeconds(600);
 
-        repository.insertUploading(submissionId1, examId, candidateId, templateId,
+        repository.insertUploading(submissionId1, examId, templateId,
             uploadExpiresAt, 52428800L, "key1.pdf");
 
         assertThrows(DuplicateKeyException.class, () -> {
-            repository.insertUploading(submissionId2, examId, candidateId, templateId,
+            repository.insertUploading(submissionId2, examId, templateId,
                 uploadExpiresAt, 52428800L, "key2.pdf");
         });
     }
@@ -90,12 +88,11 @@ class JdbcSubmissionRepositoryTest {
         setupConnection();
         UUID submissionId1 = UUID.randomUUID();
         UUID submissionId2 = UUID.randomUUID();
-        UUID candidateId2 = UUID.randomUUID();
         Instant uploadExpiresAt = Instant.now().plusSeconds(600);
 
-        repository.insertUploading(submissionId1, examId, candidateId, templateId,
+        repository.insertUploading(submissionId1, examId, templateId,
             uploadExpiresAt, 52428800L, "key1.pdf");
-        repository.insertUploading(submissionId2, examId, candidateId2, templateId,
+        repository.insertUploading(submissionId2, examId, templateId,
             uploadExpiresAt, 52428800L, "key2.pdf");
 
         List<Submission> submissions = repository.findByExam(examId);
@@ -111,7 +108,7 @@ class JdbcSubmissionRepositoryTest {
         UUID submissionId = UUID.randomUUID();
         Instant uploadExpiresAt = Instant.now().plusSeconds(600);
 
-        repository.insertUploading(submissionId, examId, candidateId, templateId,
+        repository.insertUploading(submissionId, examId, templateId,
             uploadExpiresAt, 52428800L, "key.pdf");
 
         int affected = repository.transition(submissionId, SubmissionStatus.UPLOADING,
@@ -131,7 +128,7 @@ class JdbcSubmissionRepositoryTest {
         UUID submissionId = UUID.randomUUID();
         Instant uploadExpiresAt = Instant.now().plusSeconds(600);
 
-        repository.insertUploading(submissionId, examId, candidateId, templateId,
+        repository.insertUploading(submissionId, examId, templateId,
             uploadExpiresAt, 52428800L, "key.pdf");
 
         int affected = repository.transition(submissionId, SubmissionStatus.UPLOADED,
@@ -149,13 +146,12 @@ class JdbcSubmissionRepositoryTest {
         setupConnection();
         UUID submissionId1 = UUID.randomUUID();
         UUID submissionId2 = UUID.randomUUID();
-        UUID candidateId2 = UUID.randomUUID();
         Instant expiredTime = Instant.now().minusSeconds(60);
         Instant futureTime = Instant.now().plusSeconds(600);
 
-        repository.insertUploading(submissionId1, examId, candidateId, templateId,
+        repository.insertUploading(submissionId1, examId, templateId,
             expiredTime, 52428800L, "key1.pdf");
-        repository.insertUploading(submissionId2, examId, candidateId2, templateId,
+        repository.insertUploading(submissionId2, examId, templateId,
             futureTime, 52428800L, "key2.pdf");
 
         List<Submission> expired = repository.findExpiredUploading(Instant.now());

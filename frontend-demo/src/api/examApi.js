@@ -5,6 +5,7 @@ export const DEFAULT_PAPER_TEMPLATE_ID = "0a809b8a-4b10-4b64-9305-000000000001";
 export const examApi = {
   listExams: (options) => request("/api/v1/exams", options),
   createExam: (exam, options) => request("/api/v1/exams", { ...options, method: "POST", body: exam }),
+  setTemplate: (examId, templateId, options) => request(`/api/v1/exams/${examId}/template`, { ...options, method: "PUT", body: { templateId } }),
   addQuestion: (examId, question, options) => request(`/api/v1/exams/${examId}/questions`, { ...options, method: "POST", body: question }),
   createRubric: (examId, content, options) => request(`/api/v1/exams/${examId}/rubrics`, { ...options, method: "POST", body: { content } }),
   activateRubric: (examId, rubricId, options) => request(`/api/v1/exams/${examId}/rubrics/${rubricId}/activate`, { ...options, method: "POST", body: { confirmed: true } }),

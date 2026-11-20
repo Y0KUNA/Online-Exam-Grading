@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import "./template.css";
 import "./rubric.css";
 import { examApi } from "./api/index.js";
 import Button from "./components/Button";
@@ -65,12 +66,12 @@ const accessTypes = {
   council: { apiRole: "COUNCIL", icon: "♙", title: "Hội đồng chấm thi", detail: "Rà soát chênh lệch và quyết định điểm chốt." },
   grader: { apiRole: "GRADER", icon: "✎", title: "Giám khảo", detail: "Nhận phân công và chấm bài độc lập." },
 };
-function SetupExam({ examId, close, refresh }) {
+function SetupExam({ examId, initialTemplateId, templates, close, refresh }) {
   const [message, setMessage] = useState(""); const [error, setError] = useState("");
   const action = async (work, ok) => { setError(""); try { await work(); setMessage(ok); refresh(); } catch (cause) { setError(cause.message); } };
-  return <Modal title="Thiết lập kỳ thi" close={close}><div className="form"><section><b>Thêm câu hỏi</b><form className="form-grid compact" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(()=>examApi.addQuestion(examId,{orderNo:Number(f.get("orderNo")),content:f.get("content"),maxScore:Number(f.get("maxScore")),required:true}),"Đã thêm câu hỏi");}}><label>Thứ tự<input name="orderNo" type="number" min="1" required /></label><label>Nội dung<input name="content" required /></label><label>Điểm tối đa<input name="maxScore" type="number" min="0" step=".25" required /></label><div className="actions"><Button type="submit">Lưu câu hỏi</Button></div></form></section><section><b>Tạo rubric</b><form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(async()=>{const created=await examApi.createRubric(examId,JSON.parse(f.get("content")));await examApi.activateRubric(examId,created.rubricId);},"Đã tạo và kích hoạt rubric");}}><label className="feedback">Nội dung JSON<textarea name="content" defaultValue={'{"instructions":"Chấm theo đáp án đã phê duyệt"}'} /></label><div className="actions"><Button type="submit">Lưu rubric</Button></div></form></section><section><b>Import danh sách thí sinh (CSV)</b><form onSubmit={(e)=>{e.preventDefault();const file=new FormData(e.currentTarget).get("file");if(!(file instanceof File)||file.size===0){setError("Hãy chọn tệp CSV trước khi import.");return;}action(async()=>{const result=await examApi.importRoster(examId,file);return result;},"Đã import roster");}}><label className="upload">⇧ <b>Chọn tệp CSV</b><input name="file" type="file" accept=".csv,text/csv" required /></label><small>Header bắt buộc: candidateNumber, fullName; tùy chọn: className.</small><div className="actions"><Button type="submit">Import danh sách</Button></div></form></section>{message&&<p className="success">{message}</p>}{error&&<p className="form-error">{error}</p>}</div></Modal>;
+  return <Modal title="Thiết lập kỳ thi" close={close}><div className="form"><section><b>Mẫu giấy thi *</b><small>Phải có mẫu trước khi tải bài thi để hệ thống che đúng vùng thông tin.</small><form className="compact" onSubmit={(e)=>{e.preventDefault();const templateId=new FormData(e.currentTarget).get("templateId");if(!templateId){setError("Hãy chọn mẫu giấy thi.");return;}action(()=>examApi.setTemplate(examId,templateId),"Đã cập nhật mẫu giấy thi");}}><label>Mẫu áp dụng<select name="templateId" required defaultValue={initialTemplateId ?? ""}><option value="" disabled>Chọn mẫu giấy thi</option>{templates.map((template)=><option key={template.templateId} value={template.templateId}>{template.name}</option>)}</select></label><div className="actions"><Button type="submit" disabled={!templates.length}>Lưu mẫu giấy thi</Button></div></form></section><section><b>Thêm câu hỏi</b><form className="form-grid compact" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(()=>examApi.addQuestion(examId,{orderNo:Number(f.get("orderNo")),content:f.get("content"),maxScore:Number(f.get("maxScore")),required:true}),"Đã thêm câu hỏi");}}><label>Thứ tự<input name="orderNo" type="number" min="1" required /></label><label>Nội dung<input name="content" required /></label><label>Điểm tối đa<input name="maxScore" type="number" min="0" step=".25" required /></label><div className="actions"><Button type="submit">Lưu câu hỏi</Button></div></form></section><section><b>Tạo rubric</b><form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(async()=>{const created=await examApi.createRubric(examId,JSON.parse(f.get("content")));await examApi.activateRubric(examId,created.rubricId);},"Đã tạo và kích hoạt rubric");}}><label className="feedback">Nội dung JSON<textarea name="content" defaultValue={'{"instructions":"Chấm theo đáp án đã phê duyệt"}'} /></label><div className="actions"><Button type="submit">Lưu rubric</Button></div></form></section><section><b>Import danh sách thí sinh (CSV)</b><form onSubmit={(e)=>{e.preventDefault();const file=new FormData(e.currentTarget).get("file");if(!(file instanceof File)||file.size===0){setError("Hãy chọn tệp CSV trước khi import.");return;}action(async()=>{const result=await examApi.importRoster(examId,file);return result;},"Đã import roster");}}><label className="upload">⇧ <b>Chọn tệp CSV</b><input name="file" type="file" accept=".csv,text/csv" required /></label><small>Header bắt buộc: candidateNumber, fullName; tùy chọn: className.</small><div className="actions"><Button type="submit">Import danh sách</Button></div></form></section>{message&&<p className="success">{message}</p>}{error&&<p className="form-error">{error}</p>}</div></Modal>;
 }
-function CreateModal({ close, onCreated }) {
+function CreateModal({ close, onCreated, templates }) {
   const [cross, setCross] = useState(true);
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -99,7 +100,7 @@ function CreateModal({ close, onCreated }) {
           setSaving(true); setError("");
           try {
             const rosterFile = form.get("rosterFile");
-            const result = await onCreated({ name: form.get("name"), subject: form.get("subject"), examTime: form.get("examTime"), gradeLevel: form.get("gradeLevel"), crossGradingEnabled: cross, graderCount: cross ? Number(form.get("graderCount")) : 1, differenceThreshold: cross ? Number(form.get("differenceThreshold")) : 0 }, rosterFile instanceof File && rosterFile.size > 0 ? rosterFile : null);
+            const result = await onCreated({ name: form.get("name"), subject: form.get("subject"), examTime: form.get("examTime"), gradeLevel: form.get("gradeLevel"), templateId: form.get("templateId"), crossGradingEnabled: cross, graderCount: cross ? Number(form.get("graderCount")) : 1, differenceThreshold: cross ? Number(form.get("differenceThreshold")) : 0 }, rosterFile instanceof File && rosterFile.size > 0 ? rosterFile : null);
             setRosterResult(result);
             setDone(true);
           } catch (cause) { setError(cause.message); } finally { setSaving(false); }
@@ -162,13 +163,12 @@ function CreateModal({ close, onCreated }) {
         </section>
         <section className="form-grid">
           <label>
-            Mẫu giấy thi
-            <select defaultValue="">
+            Mẫu giấy thi *
+            <select name="templateId" defaultValue="" required>
               <option value="" disabled>
                 Chọn mẫu giấy thi
               </option>
-              <option>KTCT-A4-v2 · 2 trang</option>
-              <option>Template-TL-2026 · 4 trang</option>
+              {templates.map((template) => <option key={template.templateId} value={template.templateId}>{template.name}</option>)}
             </select>
           </label>
           <div style={{ fontSize: "11px", fontWeight: 750 }}>
@@ -259,6 +259,81 @@ function OfficeHome({ open, create, exams }) {
     </>
   );
 }
+function TemplateEditor({ close, onCreated }) {
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [step, setStep] = useState("form");
+  const [masks, setMasks] = useState([]);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  const startMarking = (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    if (!file) { setError("Hãy tải lên tệp PDF mẫu trước khi tiếp tục."); return; }
+    setDraft({ name: data.get("name"), description: data.get("description") });
+    setPreviewUrl(URL.createObjectURL(file)); setError(""); setStep("mask");
+  };
+  const beginMask = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width;
+    const y = (event.clientY - bounds.top) / bounds.height;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMasks((current) => [...current, { id: crypto.randomUUID(), x, y, width: 0, height: 0 }]);
+  };
+  const resizeMask = (event) => {
+    if (!masks.length || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
+    setMasks((current) => current.map((mask, index) => index === current.length - 1 ? { ...mask, width: Math.max(.01, x - mask.x), height: Math.max(.01, y - mask.y) } : mask));
+  };
+  const save = async () => {
+    if (!masks.length) { setError("Hãy kéo chuột để đánh dấu ít nhất một vùng cần che."); return; }
+    setSaving(true); setError("");
+    try {
+      await onCreated({ ...draft, pageWidth: 595, pageHeight: 842, masks: masks.map(({ x, y, width, height }) => ({ page: 1, x, y, width, height })) }, file);
+      close();
+    } catch (cause) { setError(cause.message || "Không thể lưu mẫu giấy thi."); } finally { setSaving(false); }
+  };
+  return <Modal title={step === "form" ? "Thêm mẫu giấy thi" : "Đánh dấu vùng cần che"} close={close}>
+    {step === "form" ? <form className="form" onSubmit={startMarking}>
+      <div className="form-grid">
+        <label>Tên mẫu giấy thi *<input name="name" required placeholder="Ví dụ: Tự luận A4 - học kỳ 1" /></label>
+        <label>Mô tả<input name="description" placeholder="Ví dụ: 2 trang, dùng cho môn tự luận" /></label>
+      </div>
+      <section><div><b>Tệp PDF mẫu *</b><small>Tệp chỉ được giữ tạm trên trình duyệt cho đến khi bạn lưu mẫu.</small></div>
+        <label className="upload">⇧ <b>{file ? file.name : "Tải lên PDF mẫu"}</b><input type="file" accept="application/pdf,.pdf" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
+      </section>
+      {error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={close}>Hủy</Button><Button type="submit">Tiếp tục đánh dấu</Button></div>
+    </form> : <div className="template-editor">
+      <p>Kéo chuột trên bản xem trước để khoanh các khu vực chứa thông tin cần ẩn. Vùng đỏ sẽ được che khi xử lý bài thi.</p>
+      <div className="pdf-preview" onPointerDown={beginMask} onPointerMove={resizeMask} onPointerUp={(event) => event.currentTarget.releasePointerCapture?.(event.pointerId)}>
+        <object data={previewUrl} type="application/pdf"><span>Trình duyệt không hỗ trợ xem PDF.</span></object>
+        {masks.map((mask) => <span key={mask.id} className="mask-region" style={{ left: `${mask.x * 100}%`, top: `${mask.y * 100}%`, width: `${mask.width * 100}%`, height: `${mask.height * 100}%` }} />)}
+      </div>
+      <div className="mask-list"><b>{masks.length} vùng cần che</b>{masks.map((mask, index) => <button type="button" key={mask.id} onClick={() => setMasks((current) => current.filter((item) => item.id !== mask.id))}>Xóa vùng {index + 1}</button>)}</div>
+      {error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={() => setStep("form")}>← Quay lại</Button><Button onClick={save} disabled={saving}>{saving ? "Đang tải lên…" : "Lưu và tải lên backend"}</Button></div>
+    </div>}
+  </Modal>;
+}
+function TemplateList({ templates, create, remove }) {
+  const [deleting, setDeleting] = useState(null);
+  const [error, setError] = useState("");
+  const destroy = async (template) => {
+    if (!window.confirm(`Xóa mẫu “${template.name}”? Thao tác này không thể hoàn tác.`)) return;
+    setDeleting(template.templateId); setError("");
+    try { await remove(template.templateId); } catch (cause) { setError(cause.message || "Không thể xóa mẫu giấy thi."); } finally { setDeleting(null); }
+  };
+  return <><Header crumb="PHÒNG KHẢO THÍ / MẪU GIẤY THI" title="Quản lý mẫu giấy thi"><Button onClick={create}>＋ Thêm mẫu giấy thi</Button></Header><main className="content">
+    <div className="intro"><div><h2>Mẫu giấy thi</h2><p>Tạo mẫu PDF và đánh dấu các vùng cần che để ẩn danh bài làm trước khi chấm.</p></div></div>
+    {error && <p className="form-error">{error}</p>}
+    <section className="table-box"><Table headers={["Tên mẫu", "Mô tả", "Kích thước", "Vùng che", "Ngày tạo", ""]} rows={templates.map((template) => [template.name, template.description || "—", `${template.pageWidth} × ${template.pageHeight} pt`, `${template.maskCount ?? template.masks?.length ?? 0} vùng`, template.createdAt ? new Date(template.createdAt).toLocaleDateString("vi-VN") : "—"])} action={(row, index) => { const template = templates[index]; return <Button className="danger" disabled={deleting === template.templateId} onClick={() => destroy(template)}>{deleting === template.templateId ? "Đang xóa…" : "Xóa"}</Button>; }} />
+      {!templates.length && <div className="empty-state">Chưa có mẫu giấy thi. Hãy thêm mẫu PDF đầu tiên của bạn.</div>}
+    </section>
+  </main></>;
+}
 function OfficeExam({ exam, back, finalize, exportResults, configure, revision }) {
   const [uploadedCandidates, setUploadedCandidates] = useState({});
   const [uploadingCandidateId, setUploadingCandidateId] = useState(null);
@@ -312,7 +387,7 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
             <div>
               <h2>Danh sách thí sinh</h2>
               <p>
-                {candidatesLoading ? 'Đang tải danh sách thí sinh…' : `${candidates.length} thí sinh · ${exam.submitted} bài đã nộp`} · Chọn tệp PDF ở đúng dòng thí sinh
+                {candidatesLoading ? 'Đang tải danh sách thí sinh…' : `${candidates.length} thí sinh · ${exam.submitted} bài đã nộp`} · {!exam.templateId ? 'Hãy chọn mẫu giấy thi trong Thiết lập trước khi tải bài.' : 'Chọn tệp PDF ở đúng dòng thí sinh'}
               </p>
             </div>
           </div>
@@ -337,11 +412,11 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
 
               return (
                 <label className="upload-btn">
-                  ⇧ {isUploading ? "Đang tải…" : uploadedCandidates[row[2]] ? "Đã tải" : "Tải bài thi"}
+                  ⇧ {isUploading ? "Đang tải…" : uploadedCandidates[row[2]] ? "Đã tải" : !exam.templateId ? "Chọn mẫu trước" : "Tải bài thi"}
                   <input
                     type="file"
                     accept=".pdf,application/pdf"
-                    disabled={!candidate || isUploading}
+                    disabled={!candidate || isUploading || !exam.templateId}
                     onChange={async (event) => {
                       const file = event.target.files?.[0];
                       if (!file || !candidate) return;
@@ -853,10 +928,11 @@ function CouncilExam({ exam, reviews, back, grade }) {
 }
 export default function AppView() {
   const workspace = useExamWorkspace();
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
   const {
     authToken, role, page, creating, configuring, selectedExamId, exams, selectedExam,
-    submissions, reviews, apiError, loading, revision, user,
-    login, logout, createExam, exportResults, registerGrader, openExam,
+    submissions, reviews, templates, apiError, loading, revision, user,
+    login, logout, createExam, exportResults, createTemplate, deleteTemplate, registerGrader, openExam,
     setPage, setCreating, setConfiguring, refreshExam,
   } = workspace;
   const noExamView = <><Header crumb="DỮ LIỆU KỲ THI" title="Chưa có kỳ thi" /><main className="content"><section className="table-box"><h2>Chưa có dữ liệu để hiển thị</h2><p>Danh sách kỳ thi sẽ xuất hiện tại đây khi máy chủ có dữ liệu phù hợp với quyền của bạn.</p></section></main></>;
@@ -868,6 +944,7 @@ export default function AppView() {
           create={() => setCreating(true)}
         />}
         final={<Finalize back={() => setPage("exam")} />}
+        templates={<TemplateList templates={templates} create={() => setCreatingTemplate(true)} remove={deleteTemplate} />}
         exam={<OfficeExam
           exam={selectedExam}
           back={() => setPage("home")}
@@ -912,7 +989,7 @@ export default function AppView() {
           </div>
         </div>
         <p className="side-label">KHÔNG GIAN LÀM VIỆC</p>
-        <nav><button className="active">{accessTypes[role].icon}　{accessTypes[role].title}</button></nav>
+        <nav>{role === "office" ? <><button className={page === "templates" ? "" : "active"} onClick={() => setPage("home")}>▦　Kỳ thi</button><button className={page === "templates" ? "active" : ""} onClick={() => setPage("templates")}>▤　Quản lý mẫu giấy thi</button></> : <button className="active">{accessTypes[role].icon}　{accessTypes[role].title}</button>}</nav>
         <div className="help">
           ?{" "}
           <span>
@@ -942,8 +1019,9 @@ export default function AppView() {
       <div className="main">{view}</div>
       {loading && <div className="api-state">Đang kết nối API…</div>}
       {apiError && <div className="api-state warning">{apiError}</div>}
-      {creating && <CreateModal onCreated={createExam} close={() => setCreating(false)} />}
-      {configuring && <SetupExam examId={selectedExamId} close={() => setConfiguring(false)} refresh={refreshExam} />}
+      {creating && <CreateModal templates={templates} onCreated={createExam} close={() => setCreating(false)} />}
+      {creatingTemplate && <TemplateEditor onCreated={createTemplate} close={() => setCreatingTemplate(false)} />}
+      {configuring && <SetupExam examId={selectedExamId} initialTemplateId={selectedExam?.templateId} templates={templates} close={() => setConfiguring(false)} refresh={refreshExam} />}
     </div>
   );
 }

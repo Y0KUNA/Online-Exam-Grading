@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { authApi, examApi, gradingApi, reviewApi } from "../api/index.js";
+import { authApi, examApi, gradingApi, paperTemplateApi, reviewApi } from "../api/index.js";
 import { mapExams } from "../utils/examFormat";
 
 const TOKEN_KEY = "exam-grading.access-token";
@@ -33,6 +33,7 @@ export default function useExamWorkspace() {
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [user, setUser] = useState(null);
+  const [templates, setTemplates] = useState([]);
 
   const exams = useMemo(() => mapExams(examItems), [examItems]);
   const selectedExam = exams.find((item) => item.examId === selectedExamId) ?? exams[0];
@@ -69,6 +70,15 @@ export default function useExamWorkspace() {
       .finally(() => { if (!aborter.signal.aborted) setLoading(false); });
     return () => aborter.abort();
   }, [authToken, role]);
+
+  useEffect(() => {
+    if (!authToken || role !== "office") { setTemplates([]); return undefined; }
+    const aborter = new AbortController();
+    paperTemplateApi.list({ signal: aborter.signal })
+      .then((payload) => setTemplates(toItems(payload)))
+      .catch((cause) => { if (cause.name !== "AbortError") setApiError("Không thể tải danh sách mẫu giấy thi."); });
+    return () => aborter.abort();
+  }, [authToken, role, revision]);
 
   useEffect(() => {
     if (!selectedExamId) return undefined;
@@ -125,10 +135,20 @@ export default function useExamWorkspace() {
     } catch (cause) { setApiError(cause.message); }
   };
 
+  const createTemplate = async (metadata, file) => {
+    const created = await paperTemplateApi.create(metadata, file);
+    setTemplates((items) => [created, ...items]);
+    return created;
+  };
+  const deleteTemplate = async (templateId) => {
+    await paperTemplateApi.remove(templateId);
+    setTemplates((items) => items.filter((item) => item.templateId !== templateId));
+  };
+
   return {
     authToken, role, page, creating, configuring, selectedExamId, exams, selectedExam,
-    submissions, reviews, apiError, loading, revision, user,
-    login, logout, createExam, exportResults,
+    submissions, reviews, templates, apiError, loading, revision, user,
+    login, logout, createExam, exportResults, createTemplate, deleteTemplate,
     registerGrader: authApi.registerGrader,
     openExam: (examId) => { setSelectedExamId(examId); setPage("exam"); },
     setPage, setCreating, setConfiguring,

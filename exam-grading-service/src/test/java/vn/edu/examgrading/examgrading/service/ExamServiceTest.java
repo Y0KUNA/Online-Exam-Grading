@@ -23,9 +23,9 @@ class ExamServiceTest {
         when(repository.findById(any())).thenReturn(Map.of("status", "DRAFT"));
         ExamService service = new ExamService(repository);
 
-        Map<String, Object> created = service.create(new CreateExamRequest("Thi cuối kỳ", "Toán", "2026-12-15T08:00", "K66", BigDecimal.TEN, true, 2, BigDecimal.ONE));
+        Map<String, Object> created = service.create(new CreateExamRequest("Thi cuối kỳ", "Toán", "2026-12-15T08:00", "K66", BigDecimal.TEN, true, 2, BigDecimal.ONE, UUID.randomUUID()));
 
-        verify(repository).insert(any(UUID.class), anyString(), anyString(), anyString(), any(), anyString(), any(), anyBoolean(), anyInt(), any());
+        verify(repository).insert(any(UUID.class), anyString(), anyString(), anyString(), any(), anyString(), any(UUID.class), any(), anyBoolean(), anyInt(), any());
         verify(repository).findById(any(UUID.class));
         assertThat(created).containsEntry("status", "DRAFT");
     }

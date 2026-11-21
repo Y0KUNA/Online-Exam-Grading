@@ -64,7 +64,7 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
         String sql = """
             SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
-                   declared_file_size_bytes, object_key, failure_code,
+                   declared_file_size_bytes, file_size_bytes, object_key, failure_code,
                    version, updated_at
             FROM submission
             WHERE submission_id = ?
@@ -78,7 +78,7 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
         String sql = """
             SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
-                   declared_file_size_bytes, object_key, failure_code,
+                   declared_file_size_bytes, file_size_bytes, object_key, failure_code,
                    version, updated_at
             FROM submission
             WHERE exam_id = ?

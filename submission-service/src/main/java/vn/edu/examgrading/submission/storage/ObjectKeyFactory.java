@@ -3,10 +3,8 @@ package vn.edu.examgrading.submission.storage;
 import java.util.UUID;
 
 /**
- * Deterministic object keys: {@code {examId}/{submissionId}/v{n}.pdf}.
- *
- * <p>Never embeds client-supplied {@code fileName} or {@code candidateId}
- * (PII/pseudonym), so a leaked key reveals no identity (BR-013/014).
+ * Generates original-object keys.  The display form keeps MinIO navigable for
+ * Exam Office; the immutable submission ID is retained to prevent collisions.
  */
 public final class ObjectKeyFactory {
 
@@ -20,5 +18,22 @@ public final class ObjectKeyFactory {
             throw new IllegalArgumentException("file version must be >= 1");
         }
         return examId + "/" + submissionId + "/v" + version + ".pdf";
+    }
+
+    public static String of(UUID examId, UUID submissionId, int version,
+            String examName, String examTime, String subject, String candidateName) {
+        // Keep the original argument validation shared with legacy callers.
+        of(examId, submissionId, version);
+        String examFolder = String.join(" - ", segment(examName, "exam-" + examId),
+                segment(examTime, "unscheduled"), segment(subject, "subject"));
+        return examFolder + "/" + segment(candidateName, "candidate-" + submissionId)
+                + "/" + submissionId + "/v" + version + ".pdf";
+    }
+
+    private static String segment(String value, String fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        String safe = value.trim().replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "-").replaceAll("\\s+", " ");
+        if (safe.isBlank() || ".".equals(safe) || "..".equals(safe)) return fallback;
+        return safe.length() <= 96 ? safe : safe.substring(0, 96).trim();
     }
 }

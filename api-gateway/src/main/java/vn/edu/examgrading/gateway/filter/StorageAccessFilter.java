@@ -1,5 +1,6 @@
 package vn.edu.examgrading.gateway.filter;
 
+import java.util.Arrays;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,17 +36,21 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
 
     private final long maxPdfBytes;
     private final String upstreamHost;
+    private final Set<String> corsOrigins;
 
     @Autowired
     public StorageAccessFilter(org.springframework.core.env.Environment environment) {
         this.maxPdfBytes = environment.getProperty("app.storage.max-pdf-bytes", Long.class, 52_428_800L);
         this.upstreamHost = environment.getProperty("app.storage.upstream-host", String.class, "localhost:9000");
+        this.corsOrigins = Arrays.stream(environment.getProperty("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(","))
+            .map(String::trim).filter(value -> !value.isBlank()).collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     // Keeps focused unit tests independent of Spring's Environment.
     StorageAccessFilter(long maxPdfBytes) {
         this.maxPdfBytes = maxPdfBytes;
         this.upstreamHost = "localhost:9000";
+        this.corsOrigins = Set.of("http://localhost:5173");
     }
 
     @Override
@@ -55,12 +60,20 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
         if (!path.equals(STORAGE_PREFIX) && !path.startsWith(STORAGE_PREFIX + "/")) {
             return chain.filter(exchange);
         }
+        applyCors(exchange);
         if (!path.equals(STORAGE_PREFIX) && !path.equals("/storage/")
             && !path.startsWith("/storage/original") && !path.startsWith("/storage/anonymized")) {
             return finish(exchange, HttpStatus.NOT_FOUND);
         }
 
         HttpMethod method = exchange.getRequest().getMethod();
+        // Let Gateway's global CORS handler answer storage preflights.  Without
+        // this, the allow-list below turns OPTIONS into 405 before CORS can add
+        // Access-Control-Allow-Origin for a browser's presigned POST.
+        if (method == HttpMethod.OPTIONS) {
+            exchange.getResponse().setStatusCode(HttpStatus.NO_CONTENT);
+            return exchange.getResponse().setComplete();
+        }
         if ((method == HttpMethod.GET || method == HttpMethod.HEAD) && !hasOnlyAllowedSignedQuery(exchange)) {
             return finish(exchange, HttpStatus.FORBIDDEN);
         }
@@ -125,6 +138,9 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
         exchange.getResponse().getHeaders().setCacheControl("private, no-store");
         exchange.getResponse().getHeaders().set("X-Content-Type-Options", "nosniff");
         exchange.getResponse().beforeCommit(() -> {
+            // Upstream MinIO may add its own CORS values. Set exactly one final
+            // browser-facing value after the proxied response has been copied.
+            applyCors(exchange);
             exchange.getResponse().getHeaders().remove(HttpHeaders.SERVER);
             exchange.getResponse().getHeaders().keySet().removeIf(name -> name.toLowerCase().startsWith("x-minio-"));
             return Mono.empty();
@@ -135,6 +151,20 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
     private Mono<Void> finish(ServerWebExchange exchange, HttpStatus status) {
         exchange.getResponse().setStatusCode(status);
         return exchange.getResponse().setComplete();
+    }
+
+    private void applyCors(ServerWebExchange exchange) {
+        String origin = exchange.getRequest().getHeaders().getOrigin();
+        if (origin == null || !corsOrigins.contains(origin)) return;
+        HttpHeaders headers = exchange.getResponse().getHeaders();
+        headers.setAccessControlAllowOrigin(origin);
+        headers.add(HttpHeaders.VARY, HttpHeaders.ORIGIN);
+        headers.setAccessControlAllowMethods(java.util.List.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
+            HttpMethod.DELETE, HttpMethod.OPTIONS));
+        headers.setAccessControlAllowHeaders(java.util.List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE,
+            "Idempotency-Key", "X-Request-Id"));
+        headers.setAccessControlExposeHeaders(java.util.List.of("X-Request-Id", HttpHeaders.ETAG));
+        headers.setAccessControlMaxAge(3600L);
     }
 
     @Override

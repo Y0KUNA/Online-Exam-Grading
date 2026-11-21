@@ -101,6 +101,8 @@ public class AnonymizationWorker {
         }
         UUID submissionId = message.submissionId();
         UUID jobId = message.jobId();
+        log.debug("RabbitMQ receive: queue=submission.anonymize.v1, jobId={}, submissionId={}, attempt={}",
+            jobId, submissionId, message.attempt());
 
         // §8 idempotency: keyed on jobId; skip when this job already succeeded.
         var job = processingJobRepo.findJobById(jobId).orElse(null);
@@ -161,6 +163,7 @@ public class AnonymizationWorker {
                 .orElseThrow(() -> new IllegalStateException("ORIGINAL exam_file missing: " + submissionId));
 
             byte[] originalBytes = storageGateway.get(original.objectKey());
+            log.debug("Loaded original PDF for masking: submissionId={}, bytes={}", submissionId, originalBytes.length);
             // §8: templateId comes from ProcessingJob (reprocess may override it).
             UUID maskTemplateId = job.templateId() != null ? job.templateId() : submission.templateId();
             var regions = templateRepo.findMaskRegions(maskTemplateId)
@@ -186,6 +189,7 @@ public class AnonymizationWorker {
                 eventRepo.append(submissionId, SubmissionStatus.READY_FOR_GRADING, 100);
             }
             processingJobRepo.updateJobStatus(jobId, "SUCCEEDED", job.attempt() + 1);
+            log.debug("Anonymization completed: submissionId={}, outputBytes={}", submissionId, anonymizedBytes.length);
 
         } catch (PageMasker.MaskException e) {
             handleTemplateError(submissionId, jobId, e, job.attempt());
@@ -204,8 +208,14 @@ public class AnonymizationWorker {
         eventRepo.append(submissionId, SubmissionStatus.REVIEW_REQUIRED, 0);
         var submission = submissionRepo.findById(submissionId).orElse(null);
         if (submission != null) {
-            resultClient.createReview(submissionId, submission.examId(),
-                e.getTechnicalCode(), e.getMessage(), "Anonymization template error");
+            try {
+                resultClient.createReview(submissionId, submission.examId(),
+                    e.getTechnicalCode(), e.getMessage(), "Anonymization template error");
+                log.debug("Review created for anonymization template error: submissionId={}", submissionId);
+            } catch (Exception reviewError) {
+                log.error("Review creation failed after marking submission REVIEW_REQUIRED: submissionId={}",
+                    submissionId, reviewError);
+            }
         }
     }
 

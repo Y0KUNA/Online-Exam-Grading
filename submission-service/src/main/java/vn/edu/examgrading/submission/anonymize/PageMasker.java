@@ -130,10 +130,16 @@ public class PageMasker {
             paintMaskedPage(image, regions, pseudonym, dpi);
 
             PDImageXObject xImage = LosslessFactory.createFromImage(out, image);
-            PDPage masked = new PDPage(new PDRectangle(media.getWidth(), media.getHeight()));
+            // PDFRenderer applies the page CropBox/rotation.  Using MediaBox
+            // again here can stretch the rasterized page (notably rotated scan
+            // templates).  Build a normalized page from the rendered bitmap so
+            // its physical aspect ratio exactly matches what was masked.
+            float outputWidth = (float) (image.getWidth() * 72.0 / dpi);
+            float outputHeight = (float) (image.getHeight() * 72.0 / dpi);
+            PDPage masked = new PDPage(new PDRectangle(outputWidth, outputHeight));
             out.addPage(masked);
             try (PDPageContentStream cs = new PDPageContentStream(out, masked)) {
-                cs.drawImage(xImage, 0, 0, media.getWidth(), media.getHeight());
+                cs.drawImage(xImage, 0, 0, outputWidth, outputHeight);
             }
 
             for (int i = 1; i < src.getNumberOfPages(); i++) {

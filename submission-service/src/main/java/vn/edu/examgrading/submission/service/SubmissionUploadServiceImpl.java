@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +15,8 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import vn.edu.examgrading.submission.domain.Submission;
 import vn.edu.examgrading.submission.domain.SubmissionError;
 import vn.edu.examgrading.submission.domain.SubmissionStatus;
@@ -42,6 +45,7 @@ import vn.edu.examgrading.submission.messaging.ValidationWorker;
 public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
     private static final String PDF_CONTENT_TYPE = "application/pdf";
+    private static final Logger log = LoggerFactory.getLogger(SubmissionUploadServiceImpl.class);
 
     private final SubmissionRepositoryMarker submissionRepo;
     private final PaperTemplateRepository templateRepo;
@@ -82,7 +86,9 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
     @Override
     @Transactional
-    public InitSubmissionResponse init(UUID examId, InitSubmissionRequest request, UUID actorId) {
+    public InitSubmissionResponse init(UUID examId, InitSubmissionRequest request, UUID actorId, String authorization) {
+        log.debug("Starting submission upload: examId={}, candidateId={}, declaredBytes={}",
+                examId, request.candidateId(), request.fileSizeBytes());
         // 1. Content-type + declared-size guards first — reject before touching the DB.
         if (!PDF_CONTENT_TYPE.equalsIgnoreCase(request.contentType())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, SubmissionError.UNSUPPORTED_CONTENT_TYPE);
@@ -100,14 +106,15 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         // 3. Reserve the submission in UPLOADING with a deterministic, PII-free key.
         // T01: (1) insert Submission UPLOADING, commit
         UUID submissionId = UUID.randomUUID();
-        String objectKey = ObjectKeyFactory.of(examId, submissionId, 1);
+        String objectKey = ObjectKeyFactory.of(examId, submissionId, 1,
+                request.examName(), request.examTime(), request.subject(), request.candidateName());
         Instant uploadExpiresAt = Instant.now(clock).plus(uploadTtl);
         submissionRepo.insertUploading(submissionId, examId, request.templateId(),
             uploadExpiresAt, declared, objectKey);
 
         // T01: (2) call Identity submission-bindings; error 409 → rollback
         try {
-            identityClient.createBinding(examId, submissionId, request.candidateId());
+            identityClient.createBinding(examId, submissionId, request.candidateId(), authorization);
         } catch (ResponseStatusException e) {
             // CANDIDATE_ALREADY_BOUND or CANDIDATE_EXAM_MISMATCH
             // Delete the submission row just created and propagate error
@@ -117,6 +124,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
         // 4. Sign the presigned POST ticket.
         ObjectStorageGateway.UploadTicket ticket = gateway.presignPost(objectKey, declared, uploadTtl);
+        log.debug("Submission upload initialized: submissionId={}, expiresAt={}", submissionId, uploadExpiresAt);
 
         // 5. Append SSE event.
         eventRepo.append(submissionId, SubmissionStatus.UPLOADING, 0);
@@ -144,25 +152,29 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
     }
 
     private Map<String, Object> submissionToMap(Submission s) {
-        return Map.ofEntries(
-            Map.entry("submissionId", s.submissionId()),
-            Map.entry("examId", s.examId()),
-            Map.entry("templateId", s.templateId()),
-            Map.entry("status", s.status().name()),
-            Map.entry("currentFileVersion", s.currentFileVersion()),
-            Map.entry("progress", s.progress()),
-            Map.entry("uploadExpiresAt", s.uploadExpiresAt()),
-            Map.entry("declaredFileSizeBytes", s.declaredFileSizeBytes()),
-            Map.entry("objectKey", s.objectKey()),
-            Map.entry("failureCode", s.failureCode()),
-            Map.entry("version", s.version()),
-            Map.entry("updatedAt", s.updatedAt())
-        );
+        // Uploading submissions legitimately have null fileSizeBytes/failureCode.
+        // Map.of/Map.entry rejects null and used to turn the list API into HTTP 500.
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("submissionId", s.submissionId());
+        result.put("examId", s.examId());
+        result.put("templateId", s.templateId());
+        result.put("status", s.status().name());
+        result.put("currentFileVersion", s.currentFileVersion());
+        result.put("progress", s.progress());
+        result.put("uploadExpiresAt", s.uploadExpiresAt());
+        result.put("declaredFileSizeBytes", s.declaredFileSizeBytes());
+        result.put("fileSizeBytes", s.fileSizeBytes());
+        result.put("objectKey", s.objectKey());
+        result.put("failureCode", s.failureCode());
+        result.put("version", s.version());
+        result.put("updatedAt", s.updatedAt());
+        return result;
     }
 
     @Override
     @Transactional
     public CompleteSubmissionResponse complete(UUID submissionId) {
+        log.debug("Completing submission upload: submissionId={}", submissionId);
         // 1. Fetch submission
         Submission submission = submissionRepo.findById(submissionId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE));
@@ -191,6 +203,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
         Optional<StoredObject> stored = gateway.head(objectKey);
         if (stored.isEmpty()) {
+            log.debug("Submission upload object is not yet available: submissionId={}", submissionId);
             throw new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.UPLOAD_NOT_FOUND);
         }
 
@@ -200,6 +213,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
         // 6. Validate file size
         if (actualSize > maxSize) {
+            log.debug("Submission upload exceeds allowed size: submissionId={}, actualBytes={}, allowedBytes={}", submissionId, actualSize, maxSize);
             gateway.delete(objectKey);
             // T04: Release binding when FILE_TOO_LARGE
             identityClient.releaseBinding(submissionId, "FILE_TOO_LARGE");
@@ -243,17 +257,17 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
             submission.currentFileVersion(), submission.templateId());
 
         // 10. Publish validate job to RabbitMQ (schema §8 — full message fields)
-        rabbitTemplate.convertAndSend(
-            "submission.processing",
-            "validate",
-            new ValidationWorker.ValidateJobMessage(
+        ValidationWorker.ValidateJobMessage validateMessage = new ValidationWorker.ValidateJobMessage(
                 ValidationWorker.ValidateJobMessage.SCHEMA_VERSION, jobId, submissionId,
                 submission.examId(), submission.templateId(), submission.currentFileVersion(),
-                false, 0, UUID.randomUUID())
-        );
+                false, 0, UUID.randomUUID());
+        log.debug("RabbitMQ send: exchange=submission.processing, routingKey=validate, jobId={}, submissionId={}",
+            jobId, submissionId);
+        rabbitTemplate.convertAndSend("submission.processing", "validate", validateMessage);
 
         // 11. Append event
         eventRepo.append(submissionId, SubmissionStatus.UPLOADED, 0);
+        log.debug("Submission queued for validation: submissionId={}, jobId={}, actualBytes={}", submissionId, jobId, actualSize);
 
         return new CompleteSubmissionResponse(submissionId.toString(), SubmissionStatus.UPLOADED.name());
     }

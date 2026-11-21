@@ -9,10 +9,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.examgrading.submission.domain.Submission;
 import vn.edu.examgrading.submission.domain.SubmissionError;
@@ -103,8 +108,9 @@ class SubmissionUploadServiceImplTest {
 
         InitSubmissionRequest request = new InitSubmissionRequest(
             candidateId, templateId, "test.pdf", 52428800L, "application/pdf");
+        String authorization = "Bearer test-user-jwt";
 
-        InitSubmissionResponse response = service.init(examId, request, actorId);
+        InitSubmissionResponse response = service.init(examId, request, actorId, authorization);
 
         assertNotNull(response);
         assertEquals("UPLOADING", response.status());
@@ -116,7 +122,7 @@ class SubmissionUploadServiceImplTest {
 
         verify(submissionRepo).insertUploading(any(UUID.class), eq(examId),
             eq(templateId), any(Instant.class), eq(52428800L), any(String.class));
-        verify(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId));
+        verify(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId), eq(authorization));
         verify(eventRepo).append(any(UUID.class), eq(SubmissionStatus.UPLOADING), eq(0));
     }
 
@@ -190,13 +196,13 @@ class SubmissionUploadServiceImplTest {
     void init_withCandidateAlreadyBound_throws409AndRollsBack() {
         when(templateRepo.existsActive(templateId)).thenReturn(true);
         doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "CANDIDATE_ALREADY_BOUND"))
-            .when(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId));
+            .when(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId), eq("Bearer test-user-jwt"));
 
         InitSubmissionRequest request = new InitSubmissionRequest(
             candidateId, templateId, "test.pdf", 52428800L, "application/pdf");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> service.init(examId, request, actorId));
+            () -> service.init(examId, request, actorId, "Bearer test-user-jwt"));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
         verify(submissionRepo).deleteById(any(UUID.class));
@@ -206,16 +212,36 @@ class SubmissionUploadServiceImplTest {
     void init_withCandidateExamMismatch_throws409AndRollsBack() {
         when(templateRepo.existsActive(templateId)).thenReturn(true);
         doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "CANDIDATE_EXAM_MISMATCH"))
-            .when(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId));
+            .when(identityClient).createBinding(eq(examId), any(UUID.class), eq(candidateId), eq("Bearer test-user-jwt"));
 
         InitSubmissionRequest request = new InitSubmissionRequest(
             candidateId, templateId, "test.pdf", 52428800L, "application/pdf");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> service.init(examId, request, actorId));
+            () -> service.init(examId, request, actorId, "Bearer test-user-jwt"));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
         verify(submissionRepo).deleteById(any(UUID.class));
+    }
+
+    @Test
+    void createBinding_forwardsAuthorizationHeader() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        IdentityClient client = new IdentityClient(restTemplate, "http://localhost:8081");
+        UUID requestExamId = UUID.randomUUID();
+        UUID requestSubmissionId = UUID.randomUUID();
+        UUID requestCandidateId = UUID.randomUUID();
+        String authorization = "Bearer forwarded-user-jwt";
+
+        client.createBinding(requestExamId, requestSubmissionId, requestCandidateId, authorization);
+
+        ArgumentCaptor<HttpEntity<?>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).exchange(
+            eq("http://localhost:8081/internal/v1/submission-bindings"),
+            eq(HttpMethod.POST),
+            entityCaptor.capture(),
+            eq(Void.class));
+        assertEquals(authorization, entityCaptor.getValue().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
     }
 
     @Test

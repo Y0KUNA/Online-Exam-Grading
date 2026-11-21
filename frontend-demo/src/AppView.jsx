@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "./App.css";
+import "./template.css";
 import "./rubric.css";
-import { examApi } from "./api/index.js";
+import { authApi, examApi, gradingApi } from "./api/index.js";
 import Button from "./components/Button";
 import Modal from "./components/Modal";
 import Table from "./components/Table";
@@ -21,6 +24,7 @@ const submissionStatusLabel = {
 const paperRows = (submissions) => submissions.map((submission) => [submission.pseudonym ?? submission.pseudonymValue ?? '—', '—', '—', '—', submission.totalScore?.toFixed?.(2) ?? '—', submissionStatusLabel[submission.status] ?? submission.status ?? 'Chưa chấm']);
 const reviewRows = (reviews) => reviews.map((review) => [review.pseudonym ?? review.pseudonymValue ?? '—', review.graderOneScore?.toFixed?.(2) ?? '—', review.graderTwoScore?.toFixed?.(2) ?? '—', review.finalScore?.toFixed?.(2) ?? '—', review.reason ?? review.status ?? '—']);
 const rubric = [];
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 function Header({ crumb, title, children }) {
   return (
     <header className="topbar">
@@ -65,12 +69,12 @@ const accessTypes = {
   council: { apiRole: "COUNCIL", icon: "♙", title: "Hội đồng chấm thi", detail: "Rà soát chênh lệch và quyết định điểm chốt." },
   grader: { apiRole: "GRADER", icon: "✎", title: "Giám khảo", detail: "Nhận phân công và chấm bài độc lập." },
 };
-function SetupExam({ examId, close, refresh }) {
+function SetupExam({ examId, initialTemplateId, templates, close, refresh }) {
   const [message, setMessage] = useState(""); const [error, setError] = useState("");
   const action = async (work, ok) => { setError(""); try { await work(); setMessage(ok); refresh(); } catch (cause) { setError(cause.message); } };
-  return <Modal title="Thiết lập kỳ thi" close={close}><div className="form"><section><b>Thêm câu hỏi</b><form className="form-grid compact" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(()=>examApi.addQuestion(examId,{orderNo:Number(f.get("orderNo")),content:f.get("content"),maxScore:Number(f.get("maxScore")),required:true}),"Đã thêm câu hỏi");}}><label>Thứ tự<input name="orderNo" type="number" min="1" required /></label><label>Nội dung<input name="content" required /></label><label>Điểm tối đa<input name="maxScore" type="number" min="0" step=".25" required /></label><div className="actions"><Button type="submit">Lưu câu hỏi</Button></div></form></section><section><b>Tạo rubric</b><form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(async()=>{const created=await examApi.createRubric(examId,JSON.parse(f.get("content")));await examApi.activateRubric(examId,created.rubricId);},"Đã tạo và kích hoạt rubric");}}><label className="feedback">Nội dung JSON<textarea name="content" defaultValue={'{"instructions":"Chấm theo đáp án đã phê duyệt"}'} /></label><div className="actions"><Button type="submit">Lưu rubric</Button></div></form></section><section><b>Import danh sách thí sinh (CSV)</b><form onSubmit={(e)=>{e.preventDefault();const file=new FormData(e.currentTarget).get("file");if(!(file instanceof File)||file.size===0){setError("Hãy chọn tệp CSV trước khi import.");return;}action(async()=>{const result=await examApi.importRoster(examId,file);return result;},"Đã import roster");}}><label className="upload">⇧ <b>Chọn tệp CSV</b><input name="file" type="file" accept=".csv,text/csv" required /></label><small>Header bắt buộc: candidateNumber, fullName; tùy chọn: className.</small><div className="actions"><Button type="submit">Import danh sách</Button></div></form></section>{message&&<p className="success">{message}</p>}{error&&<p className="form-error">{error}</p>}</div></Modal>;
+  return <Modal title="Thiết lập kỳ thi" close={close}><div className="form"><section><b>Mẫu giấy thi *</b><small>Phải có mẫu trước khi tải bài thi để hệ thống che đúng vùng thông tin.</small><form className="compact" onSubmit={(e)=>{e.preventDefault();const templateId=new FormData(e.currentTarget).get("templateId");if(!templateId){setError("Hãy chọn mẫu giấy thi.");return;}action(()=>examApi.setTemplate(examId,templateId),"Đã cập nhật mẫu giấy thi");}}><label>Mẫu áp dụng<select name="templateId" required defaultValue={initialTemplateId ?? ""}><option value="" disabled>Chọn mẫu giấy thi</option>{templates.map((template)=><option key={template.templateId} value={template.templateId}>{template.name}</option>)}</select></label><div className="actions"><Button type="submit" disabled={!templates.length}>Lưu mẫu giấy thi</Button></div></form></section><section><b>Thêm câu hỏi</b><form className="form-grid compact" onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(()=>examApi.addQuestion(examId,{orderNo:Number(f.get("orderNo")),content:f.get("content"),maxScore:Number(f.get("maxScore")),required:true}),"Đã thêm câu hỏi");}}><label>Thứ tự<input name="orderNo" type="number" min="1" required /></label><label>Nội dung<input name="content" required /></label><label>Điểm tối đa<input name="maxScore" type="number" min="0" step=".25" required /></label><div className="actions"><Button type="submit">Lưu câu hỏi</Button></div></form></section><section><b>Tạo rubric</b><form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);action(async()=>{const created=await examApi.createRubric(examId,JSON.parse(f.get("content")));await examApi.activateRubric(examId,created.rubricId);},"Đã tạo và kích hoạt rubric");}}><label className="feedback">Nội dung JSON<textarea name="content" defaultValue={'{"instructions":"Chấm theo đáp án đã phê duyệt"}'} /></label><div className="actions"><Button type="submit">Lưu rubric</Button></div></form></section><section><b>Import danh sách thí sinh (CSV)</b><form onSubmit={(e)=>{e.preventDefault();const file=new FormData(e.currentTarget).get("file");if(!(file instanceof File)||file.size===0){setError("Hãy chọn tệp CSV trước khi import.");return;}action(async()=>{const result=await examApi.importRoster(examId,file);return result;},"Đã import roster");}}><label className="upload">⇧ <b>Chọn tệp CSV</b><input name="file" type="file" accept=".csv,text/csv" required /></label><small>Header bắt buộc: candidateNumber, fullName; tùy chọn: className.</small><div className="actions"><Button type="submit">Import danh sách</Button></div></form></section>{message&&<p className="success">{message}</p>}{error&&<p className="form-error">{error}</p>}</div></Modal>;
 }
-function CreateModal({ close, onCreated }) {
+function CreateModal({ close, onCreated, templates }) {
   const [cross, setCross] = useState(true);
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -99,7 +103,7 @@ function CreateModal({ close, onCreated }) {
           setSaving(true); setError("");
           try {
             const rosterFile = form.get("rosterFile");
-            const result = await onCreated({ name: form.get("name"), subject: form.get("subject"), examTime: form.get("examTime"), gradeLevel: form.get("gradeLevel"), crossGradingEnabled: cross, graderCount: cross ? Number(form.get("graderCount")) : 1, differenceThreshold: cross ? Number(form.get("differenceThreshold")) : 0 }, rosterFile instanceof File && rosterFile.size > 0 ? rosterFile : null);
+            const result = await onCreated({ name: form.get("name"), subject: form.get("subject"), examTime: form.get("examTime"), gradeLevel: form.get("gradeLevel"), templateId: form.get("templateId"), crossGradingEnabled: cross, graderCount: cross ? Number(form.get("graderCount")) : 1, differenceThreshold: cross ? Number(form.get("differenceThreshold")) : 0 }, rosterFile instanceof File && rosterFile.size > 0 ? rosterFile : null);
             setRosterResult(result);
             setDone(true);
           } catch (cause) { setError(cause.message); } finally { setSaving(false); }
@@ -162,13 +166,12 @@ function CreateModal({ close, onCreated }) {
         </section>
         <section className="form-grid">
           <label>
-            Mẫu giấy thi
-            <select defaultValue="">
+            Mẫu giấy thi *
+            <select name="templateId" defaultValue="" required>
               <option value="" disabled>
                 Chọn mẫu giấy thi
               </option>
-              <option>KTCT-A4-v2 · 2 trang</option>
-              <option>Template-TL-2026 · 4 trang</option>
+              {templates.map((template) => <option key={template.templateId} value={template.templateId}>{template.name}</option>)}
             </select>
           </label>
           <div style={{ fontSize: "11px", fontWeight: 750 }}>
@@ -259,28 +262,147 @@ function OfficeHome({ open, create, exams }) {
     </>
   );
 }
-function OfficeExam({ exam, back, finalize, exportResults, configure, revision }) {
+function TemplateEditor({ close, onCreated }) {
+  const [file, setFile] = useState(null);
+  const [step, setStep] = useState("form");
+  const [masks, setMasks] = useState([]);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const canvasRef = useRef(null);
+  const activeMask = useRef(null);
+  const [rendering, setRendering] = useState(false);
+  useEffect(() => {
+    if (step !== "mask" || !file || !canvasRef.current) return undefined;
+    let cancelled = false; let documentTask;
+    const render = async () => {
+      setRendering(true);
+      try {
+        const data = new Uint8Array(await file.arrayBuffer());
+        documentTask = pdfjsLib.getDocument({ data });
+        const pdf = await documentTask.promise;
+        const page = await pdf.getPage(1);
+        const raw = page.getViewport({ scale: 1 });
+        const scale = Math.min(1.25, 700 / raw.width);
+        const viewport = page.getViewport({ scale });
+        const canvas = canvasRef.current;
+        if (cancelled || !canvas) return;
+        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      } catch (cause) { if (!cancelled) setError(`Không thể xem trước PDF: ${cause.message || "lỗi không xác định"}`); }
+      finally { if (!cancelled) setRendering(false); }
+    };
+    render();
+    return () => { cancelled = true; documentTask?.destroy(); };
+  }, [step, file]);
+  const startMarking = (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    if (!file) { setError("Hãy tải lên tệp PDF mẫu trước khi tiếp tục."); return; }
+    setDraft({ name: data.get("name"), description: data.get("description") });
+    setError(""); setStep("mask");
+  };
+  const position = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) };
+  };
+  const beginMask = (event) => {
+    if (rendering) return;
+    const { x, y } = position(event);
+    const id = crypto.randomUUID(); activeMask.current = { id, startX: x, startY: y };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMasks((current) => [...current, { id, x, y, width: 0, height: 0 }]);
+  };
+  const resizeMask = (event) => {
+    const active = activeMask.current;
+    if (!active || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const { x, y } = position(event);
+    setMasks((current) => current.map((mask) => mask.id === active.id ? { ...mask, x: Math.min(active.startX, x), y: Math.min(active.startY, y), width: Math.abs(x - active.startX), height: Math.abs(y - active.startY) } : mask));
+  };
+  const save = async () => {
+    if (!masks.length) { setError("Hãy kéo chuột để đánh dấu ít nhất một vùng cần che."); return; }
+    setSaving(true); setError("");
+    try {
+      await onCreated({ ...draft, pageWidth: 595, pageHeight: 842, masks: masks.map(({ x, y, width, height }) => ({ page: 1, x, y, width, height })) }, file);
+      close();
+    } catch (cause) { setError(cause.message || "Không thể lưu mẫu giấy thi."); } finally { setSaving(false); }
+  };
+  return <Modal title={step === "form" ? "Thêm mẫu giấy thi" : "Đánh dấu vùng cần che"} close={close}>
+    {step === "form" ? <form className="form" onSubmit={startMarking}>
+      <div className="form-grid">
+        <label>Tên mẫu giấy thi *<input name="name" required placeholder="Ví dụ: Tự luận A4 - học kỳ 1" /></label>
+        <label>Mô tả<input name="description" placeholder="Ví dụ: 2 trang, dùng cho môn tự luận" /></label>
+      </div>
+      <section><div><b>Tệp PDF mẫu *</b><small>Tệp chỉ được giữ tạm trên trình duyệt cho đến khi bạn lưu mẫu.</small></div>
+        <label className="upload">⇧ <b>{file ? file.name : "Tải lên PDF mẫu"}</b><input type="file" accept="application/pdf,.pdf" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
+      </section>
+      {error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={close}>Hủy</Button><Button type="submit">Tiếp tục đánh dấu</Button></div>
+    </form> : <div className="template-editor">
+      <p>Kéo chuột trên bản xem trước để khoanh các khu vực chứa thông tin cần ẩn. Vùng đỏ sẽ được che khi xử lý bài thi; mã phách được in tự động ở giữa vùng che.</p>
+      <div className="pdf-preview" onPointerDown={beginMask} onPointerMove={resizeMask} onPointerUp={(event) => { activeMask.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId); }}>
+        <canvas ref={canvasRef} aria-label="Trang đầu PDF mẫu" />
+        {rendering && <span className="pdf-rendering">Đang dựng trang PDF…</span>}
+        {masks.map((mask) => <span key={mask.id} className="mask-region" style={{ left: `${mask.x * 100}%`, top: `${mask.y * 100}%`, width: `${mask.width * 100}%`, height: `${mask.height * 100}%` }} />)}
+      </div>
+      <div className="mask-list"><b>{masks.length} vùng cần che</b>{masks.map((mask, index) => <button type="button" key={mask.id} onClick={() => setMasks((current) => current.filter((item) => item.id !== mask.id))}>Xóa vùng {index + 1}</button>)}</div>
+      {error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={() => setStep("form")}>← Quay lại</Button><Button onClick={save} disabled={saving}>{saving ? "Đang tải lên…" : "Lưu và tải lên backend"}</Button></div>
+    </div>}
+  </Modal>;
+}
+function TemplateList({ templates, create, remove }) {
+  const [deleting, setDeleting] = useState(null);
+  const [error, setError] = useState("");
+  const destroy = async (template) => {
+    if (!window.confirm(`Xóa mẫu “${template.name}”? Thao tác này không thể hoàn tác.`)) return;
+    setDeleting(template.templateId); setError("");
+    try { await remove(template.templateId); } catch (cause) { setError(cause.message || "Không thể xóa mẫu giấy thi."); } finally { setDeleting(null); }
+  };
+  return <><Header crumb="PHÒNG KHẢO THÍ / MẪU GIẤY THI" title="Quản lý mẫu giấy thi"><Button onClick={create}>＋ Thêm mẫu giấy thi</Button></Header><main className="content">
+    <div className="intro"><div><h2>Mẫu giấy thi</h2><p>Tạo mẫu PDF và đánh dấu các vùng cần che để ẩn danh bài làm trước khi chấm.</p></div></div>
+    {error && <p className="form-error">{error}</p>}
+    <section className="table-box"><Table headers={["Tên mẫu", "Mô tả", "Kích thước", "Vùng che", "Ngày tạo", ""]} rows={templates.map((template) => [template.name, template.description || "—", `${template.pageWidth} × ${template.pageHeight} pt`, `${template.maskCount ?? template.masks?.length ?? 0} vùng`, template.createdAt ? new Date(template.createdAt).toLocaleDateString("vi-VN") : "—"])} action={(row, index) => { const template = templates[index]; return <Button className="danger" disabled={deleting === template.templateId} onClick={() => destroy(template)}>{deleting === template.templateId ? "Đang xóa…" : "Xóa"}</Button>; }} />
+      {!templates.length && <div className="empty-state">Chưa có mẫu giấy thi. Hãy thêm mẫu PDF đầu tiên của bạn.</div>}
+    </section>
+  </main></>;
+}
+function AssignmentModal({ exam, submissions, close, refresh }) {
+  const [graders, setGraders] = useState([]); const [graderIds, setGraderIds] = useState([]); const [submissionIds, setSubmissionIds] = useState([]); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
+  const ready = submissions.filter((item) => item.status === "READY_FOR_GRADING");
+  const required = exam.crossGradingEnabled ? Number(exam.graderCount ?? 2) : 1;
+  useEffect(() => { const aborter = new AbortController(); authApi.listGraders({ signal: aborter.signal }).then((items) => setGraders(Array.isArray(items) ? items : items.items ?? [])).catch((cause) => { if (cause.name !== "AbortError") setError(cause.message || "Không thể tải danh sách giám khảo."); }); return () => aborter.abort(); }, []);
+  const toggle = (setter, value) => setter((items) => items.includes(value) ? items.filter((item) => item !== value) : [...items, value]);
+  const submit = async () => { if (!submissionIds.length) { setError("Hãy chọn ít nhất một bài đã sẵn sàng chấm."); return; } if (graderIds.length !== required) { setError(`Kỳ thi này yêu cầu chọn đúng ${required} giám khảo.`); return; } setSaving(true); setError(""); try { await gradingApi.assign(exam.examId, { submissionIds, graderIds }); refresh(); close(); } catch (cause) { setError(cause.message || "Không thể tạo phân công."); } finally { setSaving(false); } };
+  return <Modal title="Phân công chấm bài" close={close}><div className="form assignment-form"><p>Chọn bài đã ẩn danh và đúng số giám khảo theo cấu hình kỳ thi.</p><section><b>Bài sẵn sàng chấm ({ready.length})</b>{!ready.length ? <p className="empty-state">Chưa có bài nào đạt trạng thái “Sẵn sàng chấm”.</p> : <div className="choice-list">{ready.map((item) => <label key={item.submissionId}><input type="checkbox" checked={submissionIds.includes(item.submissionId)} onChange={() => toggle(setSubmissionIds, item.submissionId)} /> {item.pseudonym ?? item.submissionId}</label>)}</div>}</section><section><b>Giám khảo ({graderIds.length}/{required})</b><div className="choice-list">{graders.map((grader) => <label key={grader.userId}><input type="checkbox" checked={graderIds.includes(grader.userId)} onChange={() => toggle(setGraderIds, grader.userId)} disabled={!graderIds.includes(grader.userId) && graderIds.length >= required} /> {grader.fullName} <small>({grader.username})</small></label>)}</div>{!graders.length && !error && <p className="empty-state">Chưa có tài khoản Giám khảo hoạt động.</p>}</section>{error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={close}>Hủy</Button><Button onClick={submit} disabled={saving || !ready.length}>{saving ? "Đang phân công…" : "Xác nhận phân công"}</Button></div></div></Modal>;
+}
+function OfficeExam({ exam, back, finalize, exportResults, configure, revision, submissions, refresh }) {
+  const [assigning, setAssigning] = useState(false);
   const [uploadedCandidates, setUploadedCandidates] = useState({});
   const [uploadingCandidateId, setUploadingCandidateId] = useState(null);
   const [candidates, setCandidates] = useState([]);
+  const [bindings, setBindings] = useState([]);
   const [candidateError, setCandidateError] = useState("");
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   useEffect(() => {
     const aborter = new AbortController();
     setCandidatesLoading(true); setCandidateError("");
-    examApi.listCandidates(exam.examId, { signal: aborter.signal })
-      .then((payload) => setCandidates(Array.isArray(payload) ? payload : payload.items ?? []))
+    Promise.all([
+      examApi.listCandidates(exam.examId, { signal: aborter.signal }),
+      examApi.listSubmissionBindings(exam.examId, { signal: aborter.signal }),
+    ])
+      .then(([candidatePayload, bindingPayload]) => {
+        setCandidates(Array.isArray(candidatePayload) ? candidatePayload : candidatePayload.items ?? []);
+        setBindings(Array.isArray(bindingPayload) ? bindingPayload : bindingPayload.items ?? []);
+      })
       .catch((cause) => { if (cause.name !== "AbortError") { setCandidates([]); setCandidateError(cause.message); } })
       .finally(() => { if (!aborter.signal.aborted) setCandidatesLoading(false); });
     return () => aborter.abort();
   }, [exam.examId, revision]);
-  const rows = candidates.map((candidate) =>
-    ['—', candidate.fullName, candidate.candidateNumber, '—', 'Chưa upload bài', '—', '—']
-  ).map((row) =>
-    uploadedCandidates[row[2]]
-      ? [row[0], row[1], row[2], 'Vừa tải lên', 'Đã nộp', row[5], row[6]]
-      : row,
-  );
+  const statusText = { UPLOADING: "Đang tải lên", UPLOADED: "Đã tải lên · chờ kiểm tra", VALIDATING: "Đang kiểm tra PDF", ANONYMIZING: "Đang ẩn danh", READY_FOR_GRADING: "Sẵn sàng chấm", REVIEW_REQUIRED: "Cần xử lý", FAILED: "Xử lý thất bại", COMPLETED: "Đã chấm" };
+  const rows = candidates.map((candidate) => {
+    const binding = bindings.find((item) => item.candidateId === candidate.candidateId);
+    const submission = binding ? submissions.find((item) => item.submissionId === binding.submissionId) : null;
+    return [submission?.pseudonym ?? '—', candidate.fullName, candidate.candidateNumber, submission?.updatedAt ? new Date(submission.updatedAt).toLocaleString("vi-VN") : uploadedCandidates[candidate.candidateNumber] ? "Vừa tải lên" : "—", statusText[submission?.status] ?? (uploadedCandidates[candidate.candidateNumber] ? "Đã nộp" : "Chưa upload bài"), submission?.failureCode ?? '—', '—'];
+  });
   return (
     <>
       <Header crumb="PHÒNG KHẢO THÍ / KỲ THI" title={exam.name}>
@@ -288,6 +410,7 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
           ← Danh sách kỳ thi
         </Button>
         <Button onClick={finalize}>Chốt điểm</Button>
+        <Button className="secondary" onClick={() => setAssigning(true)}>Phân công chấm</Button>
         <Button className="secondary" onClick={configure}>Thiết lập</Button>
       </Header>
       <main className="content">
@@ -312,7 +435,7 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
             <div>
               <h2>Danh sách thí sinh</h2>
               <p>
-                {candidatesLoading ? 'Đang tải danh sách thí sinh…' : `${candidates.length} thí sinh · ${exam.submitted} bài đã nộp`} · Chọn tệp PDF ở đúng dòng thí sinh
+                {candidatesLoading ? 'Đang tải danh sách thí sinh…' : `${candidates.length} thí sinh · ${exam.submitted} bài đã nộp`} · {!exam.templateId ? 'Hãy chọn mẫu giấy thi trong Thiết lập trước khi tải bài.' : 'Chọn tệp PDF ở đúng dòng thí sinh'}
               </p>
             </div>
           </div>
@@ -337,18 +460,18 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
 
               return (
                 <label className="upload-btn">
-                  ⇧ {isUploading ? "Đang tải…" : uploadedCandidates[row[2]] ? "Đã tải" : "Tải bài thi"}
+                  ⇧ {isUploading ? "Đang tải…" : uploadedCandidates[row[2]] ? "Đã tải" : !exam.templateId ? "Chọn mẫu trước" : "Tải bài thi"}
                   <input
                     type="file"
                     accept=".pdf,application/pdf"
-                    disabled={!candidate || isUploading}
+                    disabled={!candidate || isUploading || !exam.templateId}
                     onChange={async (event) => {
                       const file = event.target.files?.[0];
                       if (!file || !candidate) return;
 
                       setUploadingCandidateId(candidate.candidateId);
                       try {
-                        await examApi.uploadSubmission(exam.examId, candidate.candidateId, file, { templateId: exam.templateId });
+                        await examApi.uploadSubmission(exam, candidate, file, { templateId: exam.templateId });
                         setUploadedCandidates((current) => ({ ...current, [row[2]]: true }));
                         setCandidateError("");
                       } catch (cause) {
@@ -374,6 +497,7 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision }
           <Button onClick={finalize}>Chốt điểm</Button>
         </div>
       </main>
+      {assigning && <AssignmentModal exam={exam} submissions={submissions} close={() => setAssigning(false)} refresh={refresh} />}
     </>
   );
 }
@@ -853,10 +977,11 @@ function CouncilExam({ exam, reviews, back, grade }) {
 }
 export default function AppView() {
   const workspace = useExamWorkspace();
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
   const {
-    authToken, role, page, creating, configuring, selectedExamId, exams, selectedExam,
-    submissions, reviews, apiError, loading, revision, user,
-    login, logout, createExam, exportResults, registerGrader, openExam,
+    authToken, authReady, role, page, creating, configuring, selectedExamId, exams, selectedExam,
+    submissions, reviews, templates, apiError, loading, revision, user,
+    login, logout, createExam, exportResults, createTemplate, deleteTemplate, registerGrader, openExam,
     setPage, setCreating, setConfiguring, refreshExam,
   } = workspace;
   const noExamView = <><Header crumb="DỮ LIỆU KỲ THI" title="Chưa có kỳ thi" /><main className="content"><section className="table-box"><h2>Chưa có dữ liệu để hiển thị</h2><p>Danh sách kỳ thi sẽ xuất hiện tại đây khi máy chủ có dữ liệu phù hợp với quyền của bạn.</p></section></main></>;
@@ -868,6 +993,7 @@ export default function AppView() {
           create={() => setCreating(true)}
         />}
         final={<Finalize back={() => setPage("exam")} />}
+        templates={<TemplateList templates={templates} create={() => setCreatingTemplate(true)} remove={deleteTemplate} />}
         exam={<OfficeExam
           exam={selectedExam}
           back={() => setPage("home")}
@@ -875,6 +1001,8 @@ export default function AppView() {
           exportResults={exportResults}
           configure={() => setConfiguring(true)}
           revision={revision}
+          submissions={submissions}
+          refresh={refreshExam}
         />}
       />
     ) : role === "grader" ? (
@@ -900,7 +1028,8 @@ export default function AppView() {
         grading={<Grading council back={() => setPage("exam")} />}
       />
     );
-  if (!authToken) return <Login onLogin={login} onRegister={registerGrader} />;
+  if (!authReady) return <div className="api-state">Đang xác thực phiên đăng nhập…</div>;
+  if (!authToken || !role) return <Login onLogin={login} onRegister={registerGrader} />;
   return (
     <div className="app">
       <aside>
@@ -912,7 +1041,7 @@ export default function AppView() {
           </div>
         </div>
         <p className="side-label">KHÔNG GIAN LÀM VIỆC</p>
-        <nav><button className="active">{accessTypes[role].icon}　{accessTypes[role].title}</button></nav>
+        <nav>{role === "office" ? <><button className={page === "templates" ? "" : "active"} onClick={() => setPage("home")}>▦　Kỳ thi</button><button className={page === "templates" ? "active" : ""} onClick={() => setPage("templates")}>▤　Quản lý mẫu giấy thi</button></> : <button className="active">{accessTypes[role].icon}　{accessTypes[role].title}</button>}</nav>
         <div className="help">
           ?{" "}
           <span>
@@ -942,8 +1071,9 @@ export default function AppView() {
       <div className="main">{view}</div>
       {loading && <div className="api-state">Đang kết nối API…</div>}
       {apiError && <div className="api-state warning">{apiError}</div>}
-      {creating && <CreateModal onCreated={createExam} close={() => setCreating(false)} />}
-      {configuring && <SetupExam examId={selectedExamId} close={() => setConfiguring(false)} refresh={refreshExam} />}
+      {creating && <CreateModal templates={templates} onCreated={createExam} close={() => setCreating(false)} />}
+      {creatingTemplate && <TemplateEditor onCreated={createTemplate} close={() => setCreatingTemplate(false)} />}
+      {configuring && <SetupExam examId={selectedExamId} initialTemplateId={selectedExam?.templateId} templates={templates} close={() => setConfiguring(false)} refresh={refreshExam} />}
     </div>
   );
 }

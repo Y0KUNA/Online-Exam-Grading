@@ -1,4 +1,5 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
+const DEFAULT_PAPER_TEMPLATE_ID = "0a809b8a-4b10-4b64-9305-000000000001";
 const storedToken = () => sessionStorage.getItem("exam-grading.access-token") ?? undefined;
 
 export class ApiError extends Error {
@@ -57,7 +58,7 @@ export const gradingApi = {
       method: "POST",
       body: {
         candidateId,
-        templateId,
+        templateId: templateId ?? DEFAULT_PAPER_TEMPLATE_ID,
         fileName: file.name,
         fileSizeBytes: file.size,
         contentType: file.type || "application/pdf",

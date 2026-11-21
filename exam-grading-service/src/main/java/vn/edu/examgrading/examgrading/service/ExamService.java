@@ -24,6 +24,7 @@ public class ExamService {
     public Map<String, Object> create(CreateExamRequest request) {
         String name = required(request.name(), "name");
         String subject = required(request.subject(), "subject");
+        if (request.templateId() == null) throw new IllegalArgumentException("templateId is required");
         boolean crossGrading = request.crossGradingEnabled() != null && request.crossGradingEnabled();
         int graderCount = request.graderCount() == null ? 1 : request.graderCount();
         BigDecimal threshold = request.differenceThreshold() == null ? BigDecimal.ZERO : request.differenceThreshold();
@@ -31,11 +32,18 @@ public class ExamService {
         if (graderCount < 1 || (crossGrading && graderCount < 2) || threshold.signum() < 0 || scale.signum() <= 0) throw new IllegalArgumentException("Invalid grading configuration");
 
         UUID id = UUID.randomUUID();
-        exams.insert(id, "EX-" + id.toString().substring(0, 8).toUpperCase(), name, subject, parseExamTime(request.examTime()), nullable(request.gradeLevel()), scale, crossGrading, graderCount, threshold);
+        exams.insert(id, "EX-" + id.toString().substring(0, 8).toUpperCase(), name, subject, parseExamTime(request.examTime()), nullable(request.gradeLevel()), request.templateId(), scale, crossGrading, graderCount, threshold);
         return exams.findById(id);
     }
 
     public List<Map<String, Object>> questions(UUID examId) { return exams.findQuestions(examId); }
+
+    @Transactional
+    public Map<String, Object> setTemplate(UUID examId, UUID templateId) {
+        if (templateId == null) throw new IllegalArgumentException("templateId is required");
+        if (!exams.setTemplate(examId, templateId)) throw new IllegalArgumentException("exam not found");
+        return exams.findById(examId);
+    }
 
     @Transactional
     public Map<String, Object> addQuestion(UUID examId, Map<String, Object> body) {

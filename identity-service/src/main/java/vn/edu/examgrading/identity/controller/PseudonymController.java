@@ -1,7 +1,11 @@
 package vn.edu.examgrading.identity.controller;
 
 import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.examgrading.identity.repository.SubmissionBindingRepository;
+import vn.edu.examgrading.common.security.HmacSigner;
 
 /**
  * Internal endpoints for pseudonym management (TICKET 02).
@@ -24,11 +29,14 @@ public class PseudonymController {
 
     private final JdbcTemplate jdbcTemplate;
     private final SubmissionBindingRepository bindingRepository;
+    private final String internalHmacSecret;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public PseudonymController(JdbcTemplate jdbcTemplate, SubmissionBindingRepository bindingRepository) {
+    public PseudonymController(JdbcTemplate jdbcTemplate, SubmissionBindingRepository bindingRepository,
+            @Value("${app.internal.hmac-secret}") String internalHmacSecret) {
         this.jdbcTemplate = jdbcTemplate;
         this.bindingRepository = bindingRepository;
+        this.internalHmacSecret = internalHmacSecret;
     }
 
     /**
@@ -37,7 +45,12 @@ public class PseudonymController {
      * Identity looks up candidate from binding (E-14).
      */
     @PostMapping("/pseudonyms")
-    public ResponseEntity<PseudonymResponse> createPseudonym(@RequestBody PseudonymRequest request) {
+    public ResponseEntity<PseudonymResponse> createPseudonym(@RequestBody PseudonymRequest request,
+            @RequestHeader("X-Service-Caller") String caller,
+            @RequestHeader("X-Service-Request-Id") UUID requestId,
+            @RequestHeader("X-Service-Timestamp") Instant timestamp,
+            @RequestHeader("X-Service-Signature") String signature) {
+        verifyServiceSignature(caller, requestId, timestamp, signature);
         // Check idempotency - return existing if same key
         var existing = findByIdempotencyKey(request.idempotencyKey());
         if (existing.isPresent()) {
@@ -77,7 +90,12 @@ public class PseudonymController {
      * Response: {items: [{submissionId, pseudonym}]}
      */
     @PostMapping("/pseudonyms/lookup")
-    public ResponseEntity<PseudonymLookupResponse> lookupPseudonyms(@RequestBody PseudonymLookupRequest request) {
+    public ResponseEntity<PseudonymLookupResponse> lookupPseudonyms(@RequestBody PseudonymLookupRequest request,
+            @RequestHeader("X-Service-Caller") String caller,
+            @RequestHeader("X-Service-Request-Id") UUID requestId,
+            @RequestHeader("X-Service-Timestamp") Instant timestamp,
+            @RequestHeader("X-Service-Signature") String signature) {
+        verifyServiceSignature(caller, requestId, timestamp, signature);
         if (request.submissionIds() == null || request.submissionIds().isEmpty()) {
             return ResponseEntity.ok(new PseudonymLookupResponse(java.util.List.of()));
         }
@@ -129,6 +147,14 @@ public class PseudonymController {
         String sql = "SELECT EXISTS(SELECT 1 FROM pseudonym WHERE exam_id = ? AND value = ?)";
         Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, examId, value);
         return Boolean.TRUE.equals(exists);
+    }
+
+    private void verifyServiceSignature(String caller, UUID requestId, Instant timestamp, String signature) {
+        boolean valid = Set.of("submission-service", "exam-grading-service", "result-review-service").contains(caller)
+                && Duration.between(timestamp, Instant.now()).abs().toSeconds() <= 60
+                && HmacSigner.verify(internalHmacSecret,
+                    caller + "\n" + requestId + "\n" + timestamp.toEpochMilli(), signature);
+        if (!valid) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "INVALID_SERVICE_SIGNATURE");
     }
 
     // DTOs

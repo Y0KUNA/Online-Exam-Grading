@@ -1,7 +1,9 @@
 package vn.edu.examgrading.submission.client;
 
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -13,6 +15,7 @@ import vn.edu.examgrading.submission.dto.PseudonymRequest;
 import vn.edu.examgrading.submission.dto.PseudonymResponse;
 import vn.edu.examgrading.submission.dto.SubmissionBindingRequest;
 import vn.edu.examgrading.submission.dto.SubmissionBindingReleaseRequest;
+import vn.edu.examgrading.common.security.HmacSigner;
 
 /**
  * HTTP client for calling Identity Service internal endpoints (TICKET 01).
@@ -23,12 +26,21 @@ public class IdentityClient {
 
     private final RestTemplate restTemplate;
     private final String identityBaseUrl;
+    private final String internalHmacSecret;
 
+    /** Kept for focused client tests; production injection uses the constructor below. */
+    public IdentityClient(RestTemplate restTemplate, String identityBaseUrl) {
+        this(restTemplate, identityBaseUrl, "replace-with-a-32-byte-minimum-secret");
+    }
+
+    @Autowired
     public IdentityClient(
             RestTemplate restTemplate,
-            @Value("${identity.base-url:http://localhost:8081}") String identityBaseUrl) {
+            @Value("${identity.base-url:http://localhost:8081}") String identityBaseUrl,
+            @Value("${app.internal.hmac-secret}") String internalHmacSecret) {
         this.restTemplate = restTemplate;
         this.identityBaseUrl = identityBaseUrl;
+        this.internalHmacSecret = internalHmacSecret;
     }
 
     /**
@@ -80,12 +92,27 @@ public class IdentityClient {
     public PseudonymResponse createPseudonym(UUID examId, UUID submissionId, String idempotencyKey) {
         String url = identityBaseUrl + "/internal/v1/pseudonyms";
         PseudonymRequest request = new PseudonymRequest(examId, submissionId, idempotencyKey);
+        HttpHeaders headers = signedHeaders();
 
         try {
-            return restTemplate.postForEntity(url, request, PseudonymResponse.class).getBody();
+            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(request, headers), PseudonymResponse.class).getBody();
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             throw new org.springframework.web.server.ResponseStatusException(
                 e.getStatusCode(), e.getResponseBodyAsString());
         }
+    }
+
+    private HttpHeaders signedHeaders() {
+        Instant timestamp = Instant.now();
+        UUID requestId = UUID.randomUUID();
+        String caller = "submission-service";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Service-Caller", caller);
+        headers.set("X-Service-Request-Id", requestId.toString());
+        headers.set("X-Service-Timestamp", timestamp.toString());
+        headers.set("X-Service-Signature", HmacSigner.sign(internalHmacSecret,
+                caller + "\n" + requestId + "\n" + timestamp.toEpochMilli()));
+        return headers;
     }
 }

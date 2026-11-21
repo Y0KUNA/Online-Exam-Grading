@@ -1,6 +1,7 @@
 package vn.edu.examgrading.identity.repository;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import vn.edu.examgrading.identity.domain.UserAccount;
@@ -11,4 +12,5 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
     boolean existsByUsernameIgnoreCase(String username);
     boolean existsByEmailIgnoreCase(String email);
     long countByRoleAndActiveTrue(UserRole role);
+    List<UserAccount> findByRoleAndActiveTrueOrderByFullNameAsc(UserRole role);
 }

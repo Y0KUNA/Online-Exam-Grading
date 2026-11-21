@@ -11,6 +11,8 @@ spring:
   rabbitmq.publisher-confirm-type: correlated
   rabbitmq.publisher-returns: true
 management.endpoints.web.exposure.include: health,info
+logging.level.vn.edu.examgrading.submission: ${SUBMISSION_LOG_LEVEL:DEBUG}
+result-review.base-url: ${RESULT_REVIEW_BASE_URL:http://localhost:8084}
 app.internal.hmac-secret: ${IDENTITY_HMAC_SECRET:replace-with-a-32-byte-minimum-secret}
 app:
   storage:

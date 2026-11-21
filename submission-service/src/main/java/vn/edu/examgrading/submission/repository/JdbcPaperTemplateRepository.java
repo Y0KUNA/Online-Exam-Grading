@@ -27,7 +27,7 @@ public class JdbcPaperTemplateRepository implements PaperTemplateRepository {
     @Override
     public Optional<TemplateInfo> findTemplateInfo(UUID templateId) {
         String sql = """
-            SELECT template_id, page_width, page_height, active
+            SELECT template_id, page_width, page_height, active, source_pdf
             FROM paper_template
             WHERE template_id = ?
             """;
@@ -35,7 +35,8 @@ public class JdbcPaperTemplateRepository implements PaperTemplateRepository {
             rs.getObject("template_id", UUID.class),
             rs.getDouble("page_width"),
             rs.getDouble("page_height"),
-            rs.getBoolean("active")
+            rs.getBoolean("active"),
+            rs.getBytes("source_pdf")
         ), templateId).stream().findFirst();
     }
 

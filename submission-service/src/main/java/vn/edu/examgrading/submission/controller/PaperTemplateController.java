@@ -3,6 +3,8 @@ package vn.edu.examgrading.submission.controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.io.ByteArrayInputStream;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.apache.pdfbox.pdmodel.PDDocument;
 
 /** Stores immutable PDF paper templates and their normalized redaction rectangles. */
 @RestController
@@ -30,7 +33,15 @@ public class PaperTemplateController {
 
     @GetMapping
     public List<Map<String, Object>> list() {
-        return jdbc.queryForList("select template_id as \"templateId\", name, description, page_width as \"pageWidth\", page_height as \"pageHeight\", jsonb_array_length(mask) as \"maskCount\", active, created_at as \"createdAt\" from paper_template where active=true order by created_at desc");
+        return jdbc.queryForList("""
+            select template_id as "templateId", name, description, page_width as "pageWidth", page_height as "pageHeight",
+                   case jsonb_typeof(mask)
+                     when 'array' then jsonb_array_length(mask)
+                     else coalesce((mask->>'maskCount')::integer, 1)
+                   end as "maskCount",
+                   active, created_at as "createdAt"
+            from paper_template where active=true order by created_at desc
+            """);
     }
 
     @PostMapping(consumes = "multipart/form-data")
@@ -43,10 +54,13 @@ public class PaperTemplateController {
         List<Map<String, Object>> masks = json.convertValue(data.get("masks"), new TypeReference<>() {});
         if (masks == null || masks.isEmpty()) throw new IllegalArgumentException("Cần đánh dấu ít nhất một vùng che.");
         for (Map<String, Object> mask : masks) validateMask(mask);
+        Map<String, Object> normalizedMask = normalizedMask(masks);
+        byte[] sourcePdf = file.getBytes();
+        double[] pageSize = readFirstPageSize(sourcePdf);
         UUID id = UUID.randomUUID();
         jdbc.update("insert into paper_template(template_id,name,description,page_width,page_height,mask,source_pdf,source_file_name,active) values(?,?,?,?,?,cast(? as jsonb),?,?,true)",
-                id, name, optional(data, "description"), number(data, "pageWidth"), number(data, "pageHeight"), json.writeValueAsString(masks), file.getBytes(), file.getOriginalFilename());
-        return jdbc.queryForMap("select template_id as \"templateId\", name, description, page_width as \"pageWidth\", page_height as \"pageHeight\", jsonb_array_length(mask) as \"maskCount\", active, created_at as \"createdAt\" from paper_template where template_id=?", id);
+                id, name, optional(data, "description"), pageSize[0], pageSize[1], json.writeValueAsString(normalizedMask), sourcePdf, file.getOriginalFilename());
+        return jdbc.queryForMap("select template_id as \"templateId\", name, description, page_width as \"pageWidth\", page_height as \"pageHeight\", (mask->>'maskCount')::integer as \"maskCount\", active, created_at as \"createdAt\" from paper_template where template_id=?", id);
     }
 
     @DeleteMapping("/{templateId}")
@@ -61,8 +75,51 @@ public class PaperTemplateController {
             BigDecimal value = number(mask, key);
             if (value.signum() < 0 || value.compareTo(BigDecimal.ONE) > 0) throw new IllegalArgumentException("Tọa độ vùng che không hợp lệ.");
         }
-        if (number(mask, "x").add(number(mask, "width")).compareTo(BigDecimal.ONE) > 0 || number(mask, "y").add(number(mask, "height")).compareTo(BigDecimal.ONE) > 0)
+        if (number(mask, "width").signum() <= 0 || number(mask, "height").signum() <= 0
+                || number(mask, "x").add(number(mask, "width")).compareTo(BigDecimal.ONE) > 0 || number(mask, "y").add(number(mask, "height")).compareTo(BigDecimal.ONE) > 0)
             throw new IllegalArgumentException("Vùng che vượt quá trang PDF.");
+    }
+
+    /**
+     * PageMasker currently rasterizes one rectangle and writes the generated
+     * pseudonym inside it.  The editor may collect several rectangles, so keep
+     * the user's count for display but persist their bounding rectangle.  This
+     * is intentionally conservative: no selected personal information can be
+     * left visible between rectangles.
+     */
+    private static Map<String, Object> normalizedMask(List<Map<String, Object>> masks) {
+        BigDecimal minX = BigDecimal.ONE, minY = BigDecimal.ONE, maxX = BigDecimal.ZERO, maxY = BigDecimal.ZERO;
+        for (Map<String, Object> region : masks) {
+            BigDecimal x = number(region, "x"), y = number(region, "y");
+            minX = minX.min(x); minY = minY.min(y);
+            maxX = maxX.max(x.add(number(region, "width"))); maxY = maxY.max(y.add(number(region, "height")));
+        }
+        BigDecimal width = maxX.subtract(minX), height = maxY.subtract(minY);
+        Map<String, Object> mask = region(minX, minY, width, height);
+        // A centered inner area is reserved for the generated phách.
+        Map<String, Object> print = region(
+                minX.add(width.multiply(new BigDecimal("0.10"))),
+                minY.add(height.multiply(new BigDecimal("0.25"))),
+                width.multiply(new BigDecimal("0.80")), height.multiply(new BigDecimal("0.50")));
+        print.put("fontName", "Helvetica-Bold");
+        print.put("fontSize", 12);
+        print.put("align", "CENTER");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("mask", mask); result.put("print", print); result.put("maskCount", masks.size());
+        return result;
+    }
+
+    private static Map<String, Object> region(BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("x", x); result.put("y", y); result.put("width", width); result.put("height", height);
+        return result;
+    }
+    private static double[] readFirstPageSize(byte[] sourcePdf) throws Exception {
+        try (PDDocument pdf = PDDocument.load(new ByteArrayInputStream(sourcePdf))) {
+            if (pdf.getNumberOfPages() == 0) throw new IllegalArgumentException("PDF mẫu không có trang nào.");
+            var box = pdf.getPage(0).getMediaBox();
+            return new double[] { box.getWidth(), box.getHeight() };
+        }
     }
     private static String string(Map<String, Object> data, String key) { String value = optional(data, key); if (value == null) throw new IllegalArgumentException(key + " là bắt buộc."); return value; }
     private static String optional(Map<String, Object> data, String key) { Object value = data.get(key); return value == null || value.toString().isBlank() ? null : value.toString().trim(); }

@@ -14,7 +14,11 @@ public interface PaperTemplateRepository {
     /** Get mask + pseudonym print regions stored in {@code mask jsonb} (§6.4). */
     Optional<MaskRegions> findMaskRegions(UUID templateId);
 
-    record TemplateInfo(UUID templateId, double pageWidth, double pageHeight, boolean active) {}
+    record TemplateInfo(UUID templateId, double pageWidth, double pageHeight, boolean active, byte[] sourcePdf) {
+        public TemplateInfo(UUID templateId, double pageWidth, double pageHeight, boolean active) {
+            this(templateId, pageWidth, pageHeight, active, null);
+        }
+    }
 
     /** Normalized [0,1] region, origin top-left (§6.4). */
     record Region(double x, double y, double width, double height) {}

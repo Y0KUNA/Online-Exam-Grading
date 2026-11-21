@@ -19,6 +19,7 @@ public class InMemoryObjectStorage implements ObjectStorageGateway {
     public UploadTicket presignPost(String objectKey, long declaredBytes, Duration ttl) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("key", objectKey);
+        fields.put("Content-Type", "application/pdf");
         fields.put("policy", "in-memory-policy");
         fields.put("x-amz-algorithm", "AWS4-HMAC-SHA256");
         fields.put("x-amz-credential", "in-memory");

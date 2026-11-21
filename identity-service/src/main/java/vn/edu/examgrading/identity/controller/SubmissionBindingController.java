@@ -37,9 +37,8 @@ public class SubmissionBindingController {
         var existing = bindingRepository.findActiveBinding(request.submissionId());
         if (existing.isPresent()) {
             return ResponseEntity.ok(new SubmissionBindingResponse(
-                existing.get().bindingId(),
-                existing.get().status()
-            ));
+                    existing.get().bindingId(),
+                    existing.get().status()));
         }
 
         // Check if candidate already has ACTIVE binding for this exam
@@ -57,8 +56,7 @@ public class SubmissionBindingController {
         }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
-            new SubmissionBindingResponse(bindingId, "ACTIVE")
-        );
+                new SubmissionBindingResponse(bindingId, "ACTIVE"));
     }
 
     @PostMapping("/submission-bindings/{submissionId}/release")
@@ -77,19 +75,32 @@ public class SubmissionBindingController {
     }
 
     private boolean candidateBelongsToExam(UUID candidateId, UUID examId) {
-        String sql = "SELECT 1 FROM candidate WHERE candidate_id = ? AND exam_id = ?";
-        Integer result = bindingRepository.getJdbcTemplate().queryForObject(
-            sql, Integer.class, candidateId, examId);
-        return result != null && result > 0;
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1 FROM candidate
+                    WHERE candidate_id = ? AND exam_id = ?
+                )
+                """;
+
+        Boolean result = bindingRepository.getJdbcTemplate()
+                .queryForObject(sql, Boolean.class, candidateId, examId);
+
+        return Boolean.TRUE.equals(result);
     }
 
     private boolean candidateHasActiveBinding(UUID candidateId, UUID examId) {
         String sql = """
-            SELECT 1 FROM submission_binding
-            WHERE candidate_id = ? AND exam_id = ? AND status = 'ACTIVE'
-            """;
-        Integer result = bindingRepository.getJdbcTemplate().queryForObject(
-            sql, Integer.class, candidateId, examId);
-        return result != null && result > 0;
+                SELECT EXISTS (
+                    SELECT 1 FROM submission_binding
+                    WHERE candidate_id = ?
+                      AND exam_id = ?
+                      AND status = 'ACTIVE'
+                )
+                """;
+
+        Boolean result = bindingRepository.getJdbcTemplate()
+                .queryForObject(sql, Boolean.class, candidateId, examId);
+
+        return Boolean.TRUE.equals(result);
     }
 }

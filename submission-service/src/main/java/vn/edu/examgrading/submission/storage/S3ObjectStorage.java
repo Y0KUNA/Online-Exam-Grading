@@ -68,9 +68,10 @@ public class S3ObjectStorage implements ObjectStorageGateway {
         try {
             Map<String, String> signed = client.getPresignedPostFormData(policy);
             // MinIO embeds key/Content-Type in the base64 policy but does not return them
-            // as form fields; the browser must POST them, so surface the fixed key here.
+            // as form fields; the browser must POST both fixed values verbatim.
             Map<String, String> fields = new LinkedHashMap<>();
             fields.put("key", objectKey);
+            fields.put("Content-Type", PDF_CONTENT_TYPE);
             fields.putAll(signed);
             String url = gatewayUrl();
             return new UploadTicket(url, fields, expiry.toInstant());

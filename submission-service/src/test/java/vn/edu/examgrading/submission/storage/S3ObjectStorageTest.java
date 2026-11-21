@@ -47,8 +47,9 @@ class S3ObjectStorageTest {
         UploadTicket ticket = gw.presignPost(key, PDF.length, Duration.ofMinutes(10));
         assertThat(ticket.url()).isEqualTo("http://localhost:8080/storage/original");
         assertThat(ticket.fields()).containsKeys(
-                "key", "policy", "x-amz-algorithm", "x-amz-credential", "x-amz-date", "x-amz-signature");
+                "key", "Content-Type", "policy", "x-amz-algorithm", "x-amz-credential", "x-amz-date", "x-amz-signature");
         assertThat(ticket.fields()).containsEntry("key", key);
+        assertThat(ticket.fields()).containsEntry("Content-Type", "application/pdf");
 
         gw.delete(key);
         assertThat(gw.head(key)).isEmpty();

@@ -9,4 +9,11 @@ import java.util.UUID;
  * allowing workers to retrieve candidateId from submissionId without
  * storing candidateId in Submission DB (FR-022, FR-025).
  */
-public record InitSubmissionRequest(UUID candidateId, UUID templateId, String fileName, long fileSizeBytes, String contentType) { }
+public record InitSubmissionRequest(
+        UUID candidateId, UUID templateId, String fileName, long fileSizeBytes, String contentType,
+        String examName, String examTime, String subject, String candidateName) {
+    /** Compatibility constructor for API clients that do not yet send display metadata. */
+    public InitSubmissionRequest(UUID candidateId, UUID templateId, String fileName, long fileSizeBytes, String contentType) {
+        this(candidateId, templateId, fileName, fileSizeBytes, contentType, null, null, null, null);
+    }
+}

@@ -7,11 +7,15 @@
 
 ## Tổng quan
 
-Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete). Cần bổ sung:
-- Identity binding flow (theo E-14)
-- Worker VALIDATE và ANONYMIZE (theo D-18)
-- Các Identity internal endpoints
-- Các Submission endpoints còn thiếu
+> **Cập nhật tiến độ: 2026-11-21.** Đánh giá dưới đây dựa trên mã nguồn và các
+> unit test đã chạy. Các mục ghi `⚠️ CẦN XÁC NHẬN TRIỂN KHAI` đã được cài đặt
+> nhưng chưa có bằng chứng end-to-end trên bộ container đang chạy (MinIO,
+> RabbitMQ và các service liên quan).
+
+Luồng nền tảng `init → upload → complete → validate → anonymize` đã được cài đặt
+trong mã nguồn. Phần worker và migration vẫn cần một lượt kiểm chứng end-to-end sau
+khi triển khai image mới. Các phần còn thiếu chủ yếu là endpoint nội bộ/mở rộng,
+scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 
 ## Phân chia Tickets
 
@@ -68,40 +72,41 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Cao
 **Dependencies:** TICKET 01
 **Ước tính:** 8-10 giờ
+**Trạng thái:** ⚠️ CÀI ĐẶT HOÀN THÀNH — CẦN XÁC NHẬN TRIỂN KHAI
 
 #### Task con:
-1. Cấu hình RabbitMQ queue `submission.validate.v1`
-2. Implement `ValidationWorker` consumer trong Submission Service
-3. Implement logic validation:
+1. ✅ Cấu hình RabbitMQ queue `submission.validate.v1`
+2. ✅ Implement `ValidationWorker` consumer trong Submission Service
+3. ✅ Implement logic validation:
    - Tải object từ MinIO
    - Kiểm tra PDF đọc được (Apache PDFBox)
    - Kiểm tra 1-20 trang
    - Kiểm tra kích thước ±5% template
    - Tính SHA-256 và ghi vào `ExamFile.sha256`
    - Ghi `page_count` vào Submission
-4. Implement retry logic **đúng topology §8**:
+4. ✅ Implement retry logic **đúng topology §8**:
    - Queue retry riêng `submission.validate.retry.30s|2m|10m` (TTL 30s/2m/10m, DLX về `submission.processing`)
    - Header `x-attempt` (bắt đầu 0); lỗi transient → publish retry queue tương ứng với attempt+1
    - `attempt > 3` → ProcessingJob=FAILED, Submission=FAILED `VALIDATE_RETRY_EXHAUSTED`
-5. Implement error cases:
+5. ✅ Implement error cases:
    - PDF hỏng → FAILED, failure_code=PDF_CORRUPT (không retry)
    - Số trang sai → FAILED, failure_code=PAGE_COUNT_INVALID (không retry)
    - Kích thước lệch >5% → REVIEW_REQUIRED (T08)
    - Tạo Review ANONYMIZATION với technical_code=TEMPLATE_SIZE_MISMATCH
-6. Implement call Identity `POST /internal/v1/pseudonyms`:
+6. ✅ Implement call Identity `POST /internal/v1/pseudonyms`:
    - Request: `{examId, submissionId, idempotencyKey}`
    - `idempotencyKey = submissionId + ":pseudonym"` (giữ phách khi reprocess, §4.4/§9)
    - Identity tra candidate theo binding (E-14)
-7. Publish job `anonymize` sau khi VALIDATE xong — message đủ schema §8:
+7. ✅ Publish job `anonymize` sau khi VALIDATE xong — message đủ schema §8:
    `{schemaVersion:1, jobId, submissionId, examId, templateId, fileVersion, pseudonym, attempt, correlationId}`
    - Message validate **không** chứa pseudonym; `fileVersion` bắt buộc (= current_file_version)
-8. Update submission status **đúng T05/T06**:
+8. ✅ Update submission status **đúng T05/T06**:
    - Worker VALIDATE: `UPLOADED → VALIDATING` khi nhận job; sau validate xong **giữ VALIDATING**, chỉ publish job anonymize
    - `VALIDATING → ANONYMIZING` do Worker ANONYMIZE thực hiện khi nhận job (T06)
-9. Update ProcessingJob với attempt, error_code, error_detail, next_retry_at
-10. Guard message: `schemaVersion != 1` → DLQ; `fileVersion != current_file_version` → ack bỏ qua (§8)
-11. Unit tests cho validation logic
-12. Integration tests với MinIO object
+9. ✅ Update ProcessingJob với attempt, error_code, error_detail, next_retry_at
+10. ✅ Guard message: `schemaVersion != 1` → DLQ; `fileVersion != current_file_version` → ack bỏ qua (§8)
+11. ✅ Unit tests cho validation logic
+12. ⚠️ Integration tests với MinIO object đã có, nhưng lần chạy môi trường hiện tại thất bại do MinIO không sẵn sàng; cần chạy lại sau deploy.
 
 **Acceptance Criteria:**
 - Worker consume job từ queue validate
@@ -118,34 +123,35 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Cao
 **Dependencies:** TICKET 01, TICKET 02
 **Ước tính:** 8-10 giờ
+**Trạng thái:** ⚠️ CÀI ĐẶT HOÀN THÀNH — CẦN XÁC NHẬN TRIỂN KHAI
 
 #### Task con:
-1. Cấu hình RabbitMQ queue `submission.anonymize.v1` (đã có) + retry queues `submission.anonymize.retry.30s|2m|10m` theo §8
-2. Implement `AnonymizationWorker` consumer trong Submission Service
-3. Implement logic anonymization (§7):
+1. ✅ Cấu hình RabbitMQ queue `submission.anonymize.v1` (đã có) + retry queues `submission.anonymize.retry.30s|2m|10m` theo §8
+2. ✅ Implement `AnonymizationWorker` consumer trong Submission Service
+3. ✅ Implement logic anonymization (§7):
    - Tải ORIGINAL file từ MinIO
    - Đọc `mask`/`print` region từ `paper_template.mask` (schema §6.4, tọa độ chuẩn hóa)
    - Trang 1: rasterize RGB 8-bit (200 DPI, tự giảm nếu > `PDF_MAX_RENDER_PIXELS`, sàn 100 DPI), tô mask trắng `#FFFFFF`, vẽ phách đen trong vùng print, `LosslessFactory` (cấm JPEG)
    - Trang 2+: copy nguyên, bỏ annotation/form/attachment; PDF mới không metadata
    - Giới hạn: `PDF_MAX_PAGE_POINTS=14400`, `PDF_MAX_RENDER_PIXELS=40000000`, `PDF_JOB_TIMEOUT_SECONDS=120`
    - Lưu ANONYMIZED vào bucket `anonymized`, key `{examId}/{submissionId}/v{n}.pdf` (cùng version với ORIGINAL nguồn, D-05)
-4. Implement retry logic **đúng topology §8** (giống TICKET 02 task 4, routing key `anonymize`):
+4. ✅ Implement retry logic **đúng topology §8** (giống TICKET 02 task 4, routing key `anonymize`):
    - `attempt > 3` → FAILED `ANONYMIZE_RETRY_EXHAUSTED`
-5. Implement error cases:
+5. ✅ Implement error cases:
    - Lỗi template/region (không retry) → REVIEW_REQUIRED, Review `ANONYMIZATION`/`TEMPLATE_MASK_ERROR`
    - Vượt giới hạn PDF → FAILED `PDF_CORRUPT`/`LIMIT_EXCEEDED` (không retry)
-6. Implement idempotency + overwrite mode (cho T18/T27):
+6. ✅ Implement idempotency + overwrite mode (cho T18/T27):
    - Bỏ qua nếu jobId đã `SUCCEEDED`; check `fileVersion` vs `current_file_version`
    - Skip khi đã `READY_FOR_GRADING` và không `overwrite`
    - `overwrite=true` và `templateId` (reprocess) **đọc từ ProcessingJob theo jobId, không tin message** (§8) → cần cột lưu trong `processing_job` hoặc bảng job payload
    - Ghi đè object ANONYMIZED cùng key (atomic ở S3), update ExamFile ANONYMIZED (size_bytes, sha256) trong cùng transaction T09
-7. Ghi `ExamFile ANONYMIZED` (is_current=true, version = ORIGINAL.version)
-8. Update submission status **đúng T06/T09**:
+7. ✅ Ghi `ExamFile ANONYMIZED` (is_current=true, version = ORIGINAL.version)
+8. ✅ Update submission status **đúng T06/T09**:
    - Khi nhận job: `VALIDATING → ANONYMIZING` (T06)
    - Sau khi ghi bản ẩn danh: `ANONYMIZING → READY_FOR_GRADING` (T09)
-9. Guard message: `schemaVersion != 1` → DLQ; `fileVersion` stale → ack bỏ qua
-10. Unit tests cho anonymization logic + test bắt buộc §7.4 (giải mã ảnh trang 1, assert mọi pixel trong mask ngoài print = `#FFFFFF`)
-11. Integration tests với PDF mẫu + MinIO
+9. ✅ Guard message: `schemaVersion != 1` → DLQ; `fileVersion` stale → ack bỏ qua
+10. ✅ Unit tests cho anonymization logic + test pixel vùng mask (§7.4)
+11. ⚠️ Integration tests với PDF mẫu + MinIO đã có, nhưng cần chạy lại khi MinIO khả dụng.
 
 **Acceptance Criteria:**
 - Worker consume job từ queue anonymize
@@ -162,6 +168,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 01
 **Ước tính:** 4-6 giờ
+**Trạng thái:** ⬜ CHƯA THỰC HIỆN
 
 #### Task con:
 1. Implement `POST /internal/v1/pseudonyms/lookup`
@@ -191,6 +198,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 01, TICKET 02, TICKET 03
 **Ước tính:** 6-8 giờ
+**Trạng thái:** 🟡 THỰC HIỆN MỘT PHẦN (mới có endpoint chuyển trạng thái có ký HMAC)
 
 #### Task con:
 1. Implement `GET /internal/v1/submissions/{id}`
@@ -204,7 +212,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
    - Request: `{finalizedAt,retentionDeadline,idempotencyKey}`
    - Response: `{status:"FINALIZED",version:int}`
    - Idempotent theo submissionId; retention_deadline = finalized_at + 1 năm (T20)
-4. Implement `POST /internal/v1/submissions/{id}/status`
+4. ✅ Implement `POST /internal/v1/submissions/{id}/status`
    - Request: `{expectedStatus?,newStatus,reasonCode?,progress?,finalizedAt?,idempotencyKey?}`
    - Response: `{submissionId,status,version:int}`
    - Optimistic version
@@ -229,12 +237,13 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 05
 **Ước tính:** 6-8 giờ
+**Trạng thái:** 🟡 THỰC HIỆN MỘT PHẦN (đã có detail và list theo kỳ thi, chưa đủ hợp đồng spec)
 
 #### Task con:
-1. Implement `GET /api/v1/submissions/{submissionId}`
+1. ✅ Implement `GET /api/v1/submissions/{submissionId}`
    - Response: `{submissionId,examId,status,pageCount?,progress,int,error?,updatedAt}`
    - Chỉ EXAM_OFFICE (theo E-06)
-2. Implement `GET /api/v1/exams/{examId}/submissions`
+2. 🟡 Implement `GET /api/v1/exams/{examId}/submissions` (đã trả danh sách; chưa có `status/cursor/limit/nextCursor`)
    - Query: `status?,cursor?,limit?`
    - Response: `{items:[...],nextCursor}`
    - Chỉ EXAM_OFFICE
@@ -267,6 +276,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 01
 **Ước tính:** 4-6 giờ
+**Trạng thái:** ⬜ CHƯA THỰC HIỆN
 
 #### Task con:
 1. Implement scheduler chuyển UPLOADING → FAILED sau upload_expires_at
@@ -299,6 +309,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Cao (thuộc TICKET 01)
 **Dependencies:** Không có
 **Ước tính:** 2-3 giờ
+**Trạng thái:** ✅ HOÀN THÀNH (được thực hiện cùng TICKET 01)
 
 #### Task con:
 1. Tạo migration cho Identity DB:
@@ -326,6 +337,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Cao
 **Dependencies:** TICKET 02, TICKET 03, TICKET 05
 **Ước tính:** 8-10 giờ
+**Trạng thái:** ⬜ CHƯA THỰC HIỆN
 
 #### Task con:
 1. Implement `POST /api/v1/submissions/{id}/replace-file` (EO)
@@ -356,6 +368,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 03, TICKET 06
 **Ước tính:** 8-10 giờ
+**Trạng thái:** ⬜ CHƯA THỰC HIỆN
 
 #### Task con:
 1. Implement `POST /api/v1/submissions/{id}/anonymization-preview` (chỉ EO)
@@ -388,6 +401,7 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 05, TICKET 06
 **Ước tính:** 6-8 giờ
+**Trạng thái:** ⬜ CHƯA THỰC HIỆN
 
 #### Task con:
 1. Implement `POST /api/v1/submissions/{id}/remark` (EO)
@@ -412,13 +426,14 @@ Luồng upload hiện tại đã hoàn thành ~70% (init → upload → complete
 **Mức độ ưu tiên:** Cao (làm cùng TICKET 02/03)
 **Dependencies:** Không có
 **Ước tính:** 2-3 giờ
+**Trạng thái:** 🟡 CÀI ĐẶT XONG, CẦN KIỂM CHỨNG MIGRATION TRÊN DB TRIỂN KHAI
 
 #### Task con:
-1. Migration `processing_job`: đảm bảo cột `attempt`, `error_code`, `error_detail`, `next_retry_at`, status enum gồm `QUEUED|PROCESSING|SUCCEEDED|FAILED` (spec §8 dùng `SUCCEEDED`; thống nhất với worker — hiện code dùng `COMPLETED`, cần quyết định migrate data hay đổi code)
-2. Migration `exam_file` theo §5: `version int NOT NULL DEFAULT 1`, `UNIQUE(submission_id,type,version)` + partial unique `(submission_id,type) WHERE is_current` (hiện chỉ `UNIQUE(submission_id,type)`)
-3. Migration `processing_job` thêm chỗ lưu `overwrite`/`templateId` cho job reprocess (T18/T27) — spec §8: worker đọc từ job, không tin message
-4. Kiểm tra `submission.current_file_version`, `page_count`, `failure_code` columns khớp data model
-5. Test migration trên DB thật
+1. ✅ Migration `processing_job`: đảm bảo cột `attempt`, `error_code`, `error_detail`, `next_retry_at`, status enum gồm `QUEUED|PROCESSING|SUCCEEDED|FAILED`
+2. ✅ Migration `exam_file` theo §5: `version int NOT NULL DEFAULT 1`, `UNIQUE(submission_id,type,version)` + partial unique `(submission_id,type) WHERE is_current`
+3. ✅ Migration `processing_job` thêm chỗ lưu `overwrite`/`templateId` cho job reprocess (T18/T27) — worker đọc từ job, không tin message
+4. ✅ Kiểm tra `submission.current_file_version`, `page_count`, `failure_code` columns khớp data model
+5. ⚠️ Test migration trên DB thật sau khi deploy image/migration mới
 
 **Acceptance Criteria:**
 - Schema khớp §5/§8

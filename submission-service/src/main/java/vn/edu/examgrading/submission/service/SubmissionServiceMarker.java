@@ -14,7 +14,11 @@ import vn.edu.examgrading.submission.dto.InitSubmissionResponse;
  */
 public interface SubmissionServiceMarker {
 
-    InitSubmissionResponse init(UUID examId, InitSubmissionRequest request, UUID actorId);
+    InitSubmissionResponse init(UUID examId, InitSubmissionRequest request, UUID actorId, String authorization);
+
+    default InitSubmissionResponse init(UUID examId, InitSubmissionRequest request, UUID actorId) {
+        return init(examId, request, actorId, null);
+    }
 
     List<Map<String, Object>> listForExam(UUID examId);
 

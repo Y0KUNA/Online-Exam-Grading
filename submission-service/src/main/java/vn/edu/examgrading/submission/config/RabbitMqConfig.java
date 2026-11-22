@@ -5,6 +5,8 @@ import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,6 +20,13 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitMqConfig {
 
     private static final String EXCHANGE = "submission.processing";
+
+    /**
+     * Both RabbitTemplate and @RabbitListener use this converter.  Job records
+     * are not Java Serializable; without a JSON converter the upload would be
+     * marked UPLOADED but no validate/anonymize message could be published.
+     */
+    @Bean MessageConverter rabbitMessageConverter() { return new Jackson2JsonMessageConverter(); }
 
     @Bean DirectExchange processingExchange() { return new DirectExchange(EXCHANGE, true, false); }
 

@@ -100,6 +100,8 @@ public class ValidationWorker {
 
         UUID submissionId = message.submissionId();
         UUID jobId = message.jobId();
+        log.debug("RabbitMQ receive: queue=submission.validate.v1, jobId={}, submissionId={}, attempt={}",
+            jobId, submissionId, message.attempt());
 
         // §8 idempotency: keyed on jobId; skip when this job already succeeded.
         var job = processingJobRepo.findJobById(jobId).orElse(null);
@@ -152,15 +154,19 @@ public class ValidationWorker {
 
             // Download PDF from MinIO
             byte[] pdfBytes = storageGateway.get(objectKey);
+            log.debug("Loaded original PDF for validation: submissionId={}, bytes={}", submissionId, pdfBytes.length);
 
             // Calculate SHA-256
             String sha256 = calculateSha256(pdfBytes);
+            log.debug("Validation SHA-256 calculated: submissionId={}", submissionId);
 
             // Update exam_file with sha256
             updateExamFileSha256(submissionId, sha256);
+            log.debug("Original file metadata updated: submissionId={}", submissionId);
 
             // Validate PDF with PDFBox
             int pageCount = validatePdf(pdfBytes);
+            log.debug("PDF structure validated: submissionId={}, pageCount={}", submissionId, pageCount);
 
             // Update submission with page_count
             updatePageCount(submissionId, pageCount);
@@ -169,12 +175,14 @@ public class ValidationWorker {
             var templateInfo = templateRepo.findTemplateInfo(submission.templateId());
             if (templateInfo.isPresent() && templateInfo.get().active()) {
                 validatePageSize(pdfBytes, templateInfo.get(), message.force());
+                log.debug("PDF dimensions match template: submissionId={}, templateId={}", submissionId, submission.templateId());
             }
 
             // Call Identity to create pseudonym (deterministic key for idempotent retries, §8/E-14)
             var pseudonymResponse = identityClient.createPseudonym(
                 submission.examId(), submissionId, submissionId + ":pseudonym");
             String pseudonym = pseudonymResponse == null ? null : pseudonymResponse.pseudonym();
+            log.debug("Pseudonym created and validation passed: submissionId={}", submissionId);
 
             // VALIDATE done: job SUCCEEDED, publish anonymize job. Submission stays
             // VALIDATING — the ANONYMIZE worker performs T06 (VALIDATING → ANONYMIZING).
@@ -219,18 +227,27 @@ public class ValidationWorker {
     private void validatePageSize(byte[] pdfBytes, PaperTemplateRepository.TemplateInfo template, boolean force)
             throws ValidationException {
         try (PDDocument doc = loadPdf(pdfBytes)) {
+            double expectedWidth = template.pageWidth();
+            double expectedHeight = template.pageHeight();
+            if (template.sourcePdf() != null && template.sourcePdf().length > 0) {
+                try (PDDocument source = loadPdf(template.sourcePdf())) {
+                    var box = source.getPage(0).getMediaBox();
+                    expectedWidth = box.getWidth();
+                    expectedHeight = box.getHeight();
+                }
+            }
             for (int i = 0; i < doc.getNumberOfPages(); i++) {
                 var page = doc.getPage(i);
                 float width = page.getMediaBox().getWidth();
                 float height = page.getMediaBox().getHeight();
 
-                double widthDiff = Math.abs(width - template.pageWidth()) / template.pageWidth() * 100;
-                double heightDiff = Math.abs(height - template.pageHeight()) / template.pageHeight() * 100;
+                double widthDiff = Math.abs(width - expectedWidth) / expectedWidth * 100;
+                double heightDiff = Math.abs(height - expectedHeight) / expectedHeight * 100;
 
                 if (!force && (widthDiff > 5.0 || heightDiff > 5.0)) {
                     throw new ValidationException("TEMPLATE_SIZE_MISMATCH",
-                        String.format("Page %d size mismatch: width=%.2f (diff=%.1f%%), height=%.2f (diff=%.1f%%)",
-                            i + 1, width, widthDiff, height, heightDiff));
+                        String.format("Page %d size mismatch: actual=%.2fx%.2f, template=%.2fx%.2f, diff=%.1f%%/%.1f%%",
+                            i + 1, width, height, expectedWidth, expectedHeight, widthDiff, heightDiff));
                 }
             }
         } catch (ValidationException e) {
@@ -276,6 +293,8 @@ public class ValidationWorker {
             AnonymizeJobMessage.SCHEMA_VERSION, anonymizeJobId, submission.submissionId(),
             submission.examId(), submission.templateId(), submission.currentFileVersion(),
             pseudonym, 0, UUID.randomUUID());
+        log.debug("RabbitMQ send: exchange={}, routingKey=anonymize, jobId={}, submissionId={}",
+            EXCHANGE, anonymizeJobId, submission.submissionId());
         rabbitTemplate.convertAndSend(EXCHANGE, "anonymize", message);
     }
 
@@ -301,7 +320,14 @@ public class ValidationWorker {
                     eventRepo.append(submissionId, SubmissionStatus.REVIEW_REQUIRED, 0);
                 }
                 if (submission != null) {
-                    resultClient.createReview(submissionId, submission.examId(), e.getErrorCode(), e.getMessage(), "Template size mismatch");
+                    try {
+                        resultClient.createReview(submissionId, submission.examId(), e.getErrorCode(), e.getMessage(), "Template size mismatch");
+                        log.debug("Review created for template mismatch: submissionId={}", submissionId);
+                    } catch (Exception reviewError) {
+                        // The state transition must survive a temporarily unavailable review service.
+                        log.error("Review creation failed after marking submission REVIEW_REQUIRED: submissionId={}",
+                            submissionId, reviewError);
+                    }
                 }
                 break;
             default:

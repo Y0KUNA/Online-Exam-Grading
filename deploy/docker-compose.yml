@@ -87,6 +87,17 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
     entrypoint: >-
       /bin/sh -c "until mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY; do sleep 2; done; mc mb --ignore-existing local/original; mc mb --ignore-existing local/anonymized; mc anonymous set none local/original; mc anonymous set none local/anonymized"
+  minio-trace:
+    image: cgr.dev/chainguard/minio:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    entrypoint: >-
+      /bin/sh -c "until mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY; do sleep 2; done; exec mc admin trace --errors --path 'original/*' local"
   api-gateway:
     build:
       context: ..
@@ -129,6 +140,7 @@ services:
       LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES}
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
+      IDENTITY_HMAC_SECRET: ${IDENTITY_HMAC_SECRET}
     depends_on:
       postgres-identity: { condition: service_healthy }
     healthcheck:
@@ -146,6 +158,14 @@ services:
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
+      IDENTITY_BASE_URL: http://identity-service:8081
+      RESULT_REVIEW_BASE_URL: http://result-review-service:8084
+      IDENTITY_HMAC_SECRET: ${IDENTITY_HMAC_SECRET}
+      # Sign POST policies with the same endpoint and credentials as MinIO.
+      S3_INTERNAL_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_PUBLIC_BASE: http://localhost:8080/storage
     depends_on:
       postgres-submission: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }

@@ -17,7 +17,7 @@ import org.springframework.http.HttpHeaders;
 public class ReviewController {
     private final JdbcTemplate jdbc;
     public ReviewController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
-    @GetMapping("/reviews") @SuppressWarnings("null") public Map<String,Object> list(@RequestParam(required=false) UUID examId, @RequestParam(required=false) @NonNull String status) {
+    @GetMapping("/reviews") @SuppressWarnings("null") public Map<String,Object> list(@RequestParam(required=false) UUID examId, @RequestParam(required=false) String status) {
         StringBuilder sql=new StringBuilder("select review_id as \"reviewId\",submission_id as \"submissionId\",exam_id as \"examId\",reason_type as \"reasonType\",reason,status,opened_at as \"openedAt\",resolved_at as \"resolvedAt\" from review where 1=1");
         java.util.ArrayList<Object> args=new java.util.ArrayList<>();
         if(examId!=null){ sql.append(" and exam_id=?"); args.add(examId); } if(status!=null&&!status.isBlank()){ sql.append(" and status=?"); args.add(status); } sql.append(" order by opened_at desc");

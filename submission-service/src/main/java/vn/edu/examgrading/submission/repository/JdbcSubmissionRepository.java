@@ -156,6 +156,24 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
         return jdbcTemplate.update(sql, failureCode, submissionId);
     }
 
+    @Override
+    public int completeReplacement(UUID submissionId, int fileVersion) {
+        String sql = """
+            UPDATE submission
+            SET status = 'UPLOADED', current_file_version = ?, failure_code = NULL,
+                progress = 0, version = version + 1, updated_at = now()
+            WHERE submission_id = ? AND status IN ('REVIEW_REQUIRED','FAILED')
+            """;
+        return jdbcTemplate.update(sql, fileVersion, submissionId);
+    }
+
+    @Override
+    public int updateTemplateId(UUID submissionId, UUID templateId) {
+        return jdbcTemplate.update(
+            "UPDATE submission SET template_id = ?, version = version + 1, updated_at = now() WHERE submission_id = ?",
+            templateId, submissionId);
+    }
+
     private RowMapper<Submission> submissionRowMapper() {
         return (ResultSet rs, int rowNum) -> new Submission(
             rs.getObject("submission_id", UUID.class),

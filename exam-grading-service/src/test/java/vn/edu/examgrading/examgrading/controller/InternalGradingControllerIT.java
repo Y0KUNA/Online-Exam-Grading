@@ -222,7 +222,7 @@ class InternalGradingControllerIT {
             attemptId, UUID.randomUUID(), 7.5);
         // another submission's data must survive
         UUID otherSubmission = UUID.randomUUID();
-        UUID otherAssignment = newAssignment(otherSubmission, "ASSIGNED");
+        newAssignment(otherSubmission, "ASSIGNED");
 
         Map<String, Object> res = purge(submissionId, "result-review-service");
         assertEquals("DONE", res.get("status"));

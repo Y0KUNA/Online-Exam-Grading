@@ -30,7 +30,8 @@ public final class SubmissionStatusMachine {
                     || to == SubmissionStatus.VALIDATING
                     || to == SubmissionStatus.ANONYMIZING
                     || to == SubmissionStatus.COMPLETED
-                    || to == SubmissionStatus.FINALIZED;
+                    || to == SubmissionStatus.FINALIZED
+                    || to == SubmissionStatus.READY_FOR_GRADING; // T28 dismiss
             case COMPLETED -> to == SubmissionStatus.FINALIZED
                     || to == SubmissionStatus.REVIEW_REQUIRED;
             case FINALIZED -> to == SubmissionStatus.REVIEW_REQUIRED;

@@ -324,6 +324,7 @@ class InternalSubmissionControllerTest {
     // ---------- DELETE /{submissionId}/detail (retention purge §9.3) ----------
 
     @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
     void purgeDetail_deletesObjectsAndAllRows_returnsDone() {
         UUID id = UUID.randomUUID();
         UUID requestId = rid(); Instant timestamp = ts();
@@ -333,16 +334,20 @@ class InternalSubmissionControllerTest {
                 new String[]{"ANONYMIZED", "anon-key.pdf"}));
         when(jdbc.query(contains("object_key from submission"), any(org.springframework.jdbc.core.RowMapper.class), any()))
             .thenReturn(java.util.List.of("sub-key.pdf"));
+        when(jdbc.query(contains("object_key from file_replacement"), any(org.springframework.jdbc.core.RowMapper.class), any()))
+            .thenReturn(java.util.List.of("repl-key.pdf"));
 
         Map<String, Object> res = controller.purgeDetail(id, CALLER, requestId, timestamp,
             sign(CALLER, requestId, timestamp));
 
         assertEquals("DONE", res.get("status"));
-        // objects: ORIGINAL + submission key → original bucket, ANONYMIZED → anonymized bucket
+        // objects: ORIGINAL + submission key + replacement key → original bucket, ANONYMIZED → anonymized bucket
         verify(storage).delete("original", "orig-key.pdf");
         verify(storage).delete("original", "sub-key.pdf");
+        verify(storage).delete("original", "repl-key.pdf");
         verify(storage).delete("anonymized-bucket", "anon-key.pdf");
-        // rows: exam_file, submission_event, processing_job, audit_log, submission
+        // rows: file_replacement, exam_file, submission_event, processing_job, audit_log, submission
+        verify(jdbc).update("delete from file_replacement where submission_id=?", id);
         verify(jdbc).update("delete from exam_file where submission_id=?", id);
         verify(jdbc).update("delete from submission_event where submission_id=?", id);
         verify(jdbc).update("delete from processing_job where submission_id=?", id);
@@ -351,12 +356,15 @@ class InternalSubmissionControllerTest {
     }
 
     @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
     void purgeDetail_replayWithNoRows_stillReturnsDone() {
         UUID id = UUID.randomUUID();
         UUID requestId = rid(); Instant timestamp = ts();
         when(jdbc.query(contains("from exam_file"), any(org.springframework.jdbc.core.RowMapper.class), any()))
             .thenReturn(java.util.List.of());
         when(jdbc.query(contains("object_key from submission"), any(org.springframework.jdbc.core.RowMapper.class), any()))
+            .thenReturn(java.util.List.of());
+        when(jdbc.query(contains("object_key from file_replacement"), any(org.springframework.jdbc.core.RowMapper.class), any()))
             .thenReturn(java.util.List.of());
 
         Map<String, Object> res = controller.purgeDetail(id, CALLER, requestId, timestamp,

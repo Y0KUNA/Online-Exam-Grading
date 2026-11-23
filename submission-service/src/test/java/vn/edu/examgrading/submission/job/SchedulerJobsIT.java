@@ -27,7 +27,6 @@ import vn.edu.examgrading.submission.dto.PseudonymResponse;
 import vn.edu.examgrading.submission.messaging.AnonymizeJobMessage;
 import vn.edu.examgrading.submission.messaging.ValidationWorker.ValidateJobMessage;
 import vn.edu.examgrading.submission.repository.JdbcExamFileRepository;
-import vn.edu.examgrading.submission.repository.JdbcPaperTemplateRepository;
 import vn.edu.examgrading.submission.repository.JdbcProcessingJobRepository;
 import vn.edu.examgrading.submission.repository.JdbcSubmissionEventRepository;
 import vn.edu.examgrading.submission.repository.JdbcSubmissionRepository;
@@ -126,6 +125,7 @@ class SchedulerJobsIT {
         Mockito.reset(identityClient, rabbitTemplate);
         jdbc.update("delete from processing_job where submission_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from submission_event where submission_id in (select submission_id from submission where exam_id=?)", examId);
+        jdbc.update("delete from file_replacement where submission_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from exam_file where submission_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from audit_log where entity_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from submission where exam_id=?", examId);

@@ -36,6 +36,13 @@ app:
     max-render-pixels: ${PDF_MAX_RENDER_PIXELS:40000000}
     max-page-points: ${PDF_MAX_PAGE_POINTS:14400}
     job-timeout-seconds: ${PDF_JOB_TIMEOUT_SECONDS:120}
+  preview:
+    # §4.5 anonymization-preview resource limits.
+    max-concurrency: ${PREVIEW_MAX_CONCURRENCY:2}
+    timeout-seconds: ${PREVIEW_TIMEOUT_SECONDS:15}
+    rate-limit-per-minute: ${PREVIEW_RATE_LIMIT_PER_MINUTE:10}
+    min-dpi: ${PREVIEW_MIN_DPI:50}
+    max-dpi: ${PREVIEW_MAX_DPI:200}
   jobs:
     # Ops schedulers (Ticket 07). Cron exprs are Spring 6-field (sec min hour …).
     pool-size: ${JOBS_POOL_SIZE:4}

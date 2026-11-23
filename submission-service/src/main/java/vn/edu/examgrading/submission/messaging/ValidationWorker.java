@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.examgrading.submission.domain.Submission;
 import vn.edu.examgrading.submission.domain.SubmissionStatus;
+import vn.edu.examgrading.submission.repository.ExamFileRepository;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository;
 import vn.edu.examgrading.submission.repository.ProcessingJobRepository;
 import vn.edu.examgrading.submission.repository.SubmissionEventRepository;
@@ -56,6 +57,7 @@ public class ValidationWorker {
     private final SubmissionRepositoryMarker submissionRepo;
     private final ProcessingJobRepository processingJobRepo;
     private final PaperTemplateRepository templateRepo;
+    private final ExamFileRepository examFileRepo;
     private final SubmissionEventRepository eventRepo;
     private final IdentityClient identityClient;
     private final ResultClient resultClient;
@@ -68,6 +70,7 @@ public class ValidationWorker {
             SubmissionRepositoryMarker submissionRepo,
             ProcessingJobRepository processingJobRepo,
             PaperTemplateRepository templateRepo,
+            ExamFileRepository examFileRepo,
             SubmissionEventRepository eventRepo,
             IdentityClient identityClient,
             ResultClient resultClient,
@@ -78,6 +81,7 @@ public class ValidationWorker {
         this.submissionRepo = submissionRepo;
         this.processingJobRepo = processingJobRepo;
         this.templateRepo = templateRepo;
+        this.examFileRepo = examFileRepo;
         this.eventRepo = eventRepo;
         this.identityClient = identityClient;
         this.resultClient = resultClient;
@@ -146,11 +150,13 @@ public class ValidationWorker {
                 eventRepo.append(submissionId, SubmissionStatus.VALIDATING, 50);
             }
 
-            // Get object key
-            String objectKey = submission.objectKey();
-            if (objectKey == null) {
-                throw new ValidationException("OBJECT_KEY_MISSING", "Object key is null");
-            }
+            // §4.4: read the CURRENT ORIGINAL exam_file row — after a
+            // replace-file the submission's own object_key still points at the
+            // superseded version; the exam_file row carries the new key.
+            var original = examFileRepo.findCurrentOriginal(submissionId)
+                .orElseThrow(() -> new ValidationException("OBJECT_KEY_MISSING",
+                    "No current ORIGINAL exam_file for submission " + submissionId));
+            String objectKey = original.objectKey();
 
             // Download PDF from MinIO
             byte[] pdfBytes = storageGateway.get(objectKey);

@@ -18,11 +18,23 @@ public interface ExamFileRepository {
     /** Current row of the given type (ORIGINAL|ANONYMIZED); used by the internal file-access endpoint. */
     Optional<OriginalFile> findCurrentByType(UUID submissionId, String type);
 
+    /** Specific version of a type (§4.4: EO views superseded ORIGINAL scans). */
+    Optional<OriginalFile> findByTypeAndVersion(UUID submissionId, String type, int version);
+
     /** Insert the ANONYMIZED row (is_current=true, same file version as ORIGINAL). */
     void insertAnonymized(UUID fileId, UUID submissionId, int version, long sizeBytes, String objectKey, String sha256);
 
     /** Overwrite the current ANONYMIZED row in place (REPROCESS / MASK_INSUFFICIENT flow). Returns affected rows. */
     int updateAnonymized(UUID submissionId, long sizeBytes, String objectKey, String sha256);
+
+    /**
+     * §4.4: insert the replacement ORIGINAL row at an explicit version
+     * (is_current=true, sha256 null until VALIDATE computes it).
+     */
+    void insertOriginalVersion(UUID fileId, UUID submissionId, int version, long sizeBytes, String objectKey);
+
+    /** §4.4: demote every current exam_file row (ORIGINAL + ANONYMIZED) before inserting the new version. */
+    void clearCurrent(UUID submissionId);
 
     /** All file versions of a submission (any type, any currency) for the public files list. */
     List<ExamFileVersion> findAllBySubmission(UUID submissionId);

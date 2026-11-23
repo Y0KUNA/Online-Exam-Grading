@@ -67,6 +67,8 @@ class SubmissionPublicApiIT {
     private SubmissionController controller;
     private SubmissionUploadServiceImpl service;
     private IdentityClient identityClient;
+    private vn.edu.examgrading.submission.client.ResultClient resultClient;
+    private vn.edu.examgrading.submission.client.GradingClient gradingClient;
     private RabbitTemplate rabbitTemplate;
     private final UUID examId = UUID.randomUUID();
 
@@ -118,6 +120,8 @@ class SubmissionPublicApiIT {
         storage = new InMemoryObjectStorage();
         eventRepo = new JdbcSubmissionEventRepository(jdbc);
         identityClient = mock(IdentityClient.class);
+        resultClient = mock(vn.edu.examgrading.submission.client.ResultClient.class);
+        gradingClient = mock(vn.edu.examgrading.submission.client.GradingClient.class);
         rabbitTemplate = mock(RabbitTemplate.class);
         StorageProperties props = new StorageProperties("memory", "http://minio:9000", "us-east-1",
             "key", "secret", "original", "anonymized", "http://gateway:8080/storage",
@@ -128,16 +132,18 @@ class SubmissionPublicApiIT {
             eventRepo,
             new JdbcExamFileRepository(jdbc),
             new JdbcProcessingJobRepository(jdbc),
+            new vn.edu.examgrading.submission.repository.JdbcFileReplacementRepository(jdbc),
             storage, props, Clock.systemUTC(),
-            identityClient, rabbitTemplate, jdbc, 10);
+            identityClient, resultClient, gradingClient, rabbitTemplate, jdbc, 10);
         controller = new SubmissionController(service);
     }
 
     @BeforeEach
     void clean() {
-        Mockito.reset(identityClient, rabbitTemplate);
+        Mockito.reset(identityClient, resultClient, gradingClient, rabbitTemplate);
         jdbc.update("delete from processing_job where submission_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from submission_event where submission_id in (select submission_id from submission where exam_id=?)", examId);
+        jdbc.update("delete from file_replacement where submission_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from exam_file where submission_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from audit_log where entity_id in (select submission_id from submission where exam_id=?)", examId);
         jdbc.update("delete from submission where exam_id=?", examId);
@@ -403,5 +409,247 @@ class SubmissionPublicApiIT {
         assertEquals(SubmissionStatus.UPLOADED, replay.get(0).status());
         assertEquals(submissionId, replay.get(0).submissionId());
         assertNotNull(replay.get(0).updatedAt());
+    }
+
+    // ---------- §4.4 replace-file flow ----------
+
+    private UUID failedSubmission(String failureCode, int fileVersion) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+            insert into submission(submission_id,exam_id,status,current_file_version,version,
+                object_key,failure_code)
+            values(?,?,'FAILED',?,?,?,?)""",
+            id, examId, fileVersion, 0, "old/v" + fileVersion + ".pdf", failureCode);
+        jdbc.update("""
+            insert into exam_file(file_id,submission_id,type,version,size_bytes,object_key,is_current)
+            values(?,?,'ORIGINAL',?,?,?,true)""",
+            UUID.randomUUID(), id, fileVersion, 100L, "old/v" + fileVersion + ".pdf");
+        return id;
+    }
+
+    @SuppressWarnings("unchecked")
+    private UUID requestReplacement(UUID submissionId) {
+        Map<String, Object> res = controller.replaceFile(submissionId,
+            new vn.edu.examgrading.submission.dto.ReplaceFileRequest(
+                "scan nhòe", "rescan.pdf", 100L, "application/pdf"), null).getBody();
+        Map<String, Object> replacement = (Map<String, Object>) res.get("replacement");
+        return UUID.fromString(replacement.get("replacementId").toString());
+    }
+
+    @Test
+    void replaceFileFlow_endToEnd_commitsNewVersionAndReplays() {
+        UUID submissionId = failedSubmission("PDF_CORRUPT", 1);
+        when(gradingClient.attemptSummary(submissionId))
+            .thenReturn(Map.of("confirmedCount", 0, "draftCount", 0, "openAssignmentCount", 0));
+        doNothing().when(gradingClient).discardOpenWork(eq(submissionId), any());
+
+        UUID replacementId = requestReplacement(submissionId);
+
+        // PENDING row + audit REQUESTED; submission status unchanged
+        Map<String, Object> row = jdbc.queryForMap(
+            "select status,version,object_key from file_replacement where replacement_id=?", replacementId);
+        assertEquals("PENDING", row.get("status"));
+        assertEquals(2, ((Number) row.get("version")).intValue());
+        String v2Key = row.get("object_key").toString();
+        assertTrue(v2Key.endsWith("/v2.pdf"));
+        assertEquals("FAILED", jdbc.queryForObject(
+            "select status from submission where submission_id=?", String.class, submissionId));
+        assertEquals(1, jdbc.queryForObject(
+            "select count(*) from audit_log where entity_id=? and action='REPLACE_FILE_REQUESTED'",
+            Integer.class, submissionId));
+
+        // upload bytes to the replacement key, then complete
+        storage.put("original", v2Key, PDF, "application/pdf");
+        Map<String, Object> done = controller.completeReplacement(submissionId, replacementId);
+        assertEquals("UPLOADED", done.get("status"));
+        assertEquals(2, done.get("version"));
+
+        // exam_file: v2 current ORIGINAL, v1 demoted but retained
+        List<Map<String, Object>> files = jdbc.queryForList(
+            "select version,is_current from exam_file where submission_id=? and type='ORIGINAL' order by version",
+            submissionId);
+        assertEquals(2, files.size());
+        assertEquals(false, files.get(0).get("is_current"));
+        assertEquals(true, files.get(1).get("is_current"));
+        assertEquals(2, jdbc.queryForObject(
+            "select current_file_version from submission where submission_id=?", Integer.class, submissionId));
+        assertNull(jdbc.queryForObject(
+            "select failure_code from submission where submission_id=?", String.class, submissionId));
+
+        // replacement COMPLETED + VALIDATE job at file_version=2 + events + audit
+        assertEquals("COMPLETED", jdbc.queryForObject(
+            "select status from file_replacement where replacement_id=?", String.class, replacementId));
+        assertEquals(1, jdbc.queryForObject(
+            "select count(*) from processing_job where submission_id=? and step='VALIDATE' and file_version=2",
+            Integer.class, submissionId));
+        assertEquals(1, jdbc.queryForObject(
+            "select count(*) from submission_event where submission_id=? and status='UPLOADED'",
+            Integer.class, submissionId));
+        assertEquals(1, jdbc.queryForObject(
+            "select count(*) from audit_log where entity_id=? and action='REPLACE_FILE_COMPLETED'",
+            Integer.class, submissionId));
+        verify(rabbitTemplate, times(1)).convertAndSend(eq("submission.processing"), eq("validate"),
+            argThat((vn.edu.examgrading.submission.messaging.ValidationWorker.ValidateJobMessage m)
+                -> m.submissionId().equals(submissionId) && m.fileVersion() == 2));
+
+        // idempotent replay — no second job/event
+        Map<String, Object> replay = controller.completeReplacement(submissionId, replacementId);
+        assertEquals("UPLOADED", replay.get("status"));
+        assertEquals(1, jdbc.queryForObject(
+            "select count(*) from processing_job where submission_id=? and step='VALIDATE'",
+            Integer.class, submissionId));
+    }
+
+    @Test
+    void replaceFile_ineligibleStates_andCancel() {
+        // UPLOADED is not replaceable
+        UUID uploaded = newSubmission("UPLOADED");
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+            () -> controller.replaceFile(uploaded,
+                new vn.edu.examgrading.submission.dto.ReplaceFileRequest("r", "f.pdf", 100L, "application/pdf"), null));
+        assertEquals("REPLACE_NOT_ALLOWED", ex.getReason());
+
+        // REVIEW_REQUIRED without council authorization
+        UUID reviewRequired = newSubmission("REVIEW_REQUIRED");
+        when(resultClient.getReplaceAuthorization(reviewRequired))
+            .thenReturn(Map.of("authorized", false));
+        ex = assertThrows(ResponseStatusException.class,
+            () -> controller.replaceFile(reviewRequired,
+                new vn.edu.examgrading.submission.dto.ReplaceFileRequest("r", "f.pdf", 100L, "application/pdf"), null));
+        assertEquals("REVIEW_NOT_AUTHORIZED", ex.getReason());
+
+        // cancel a pending replacement → CANCELLED + object removed
+        UUID submissionId = failedSubmission("PAGE_COUNT_INVALID", 1);
+        when(gradingClient.attemptSummary(submissionId))
+            .thenReturn(Map.of("confirmedCount", 0));
+        UUID replacementId = requestReplacement(submissionId);
+        String v2Key = jdbc.queryForObject(
+            "select object_key from file_replacement where replacement_id=?", String.class, replacementId);
+        storage.put("original", v2Key, PDF, "application/pdf");
+
+        controller.cancelReplacement(submissionId);
+
+        assertEquals("CANCELLED", jdbc.queryForObject(
+            "select status from file_replacement where replacement_id=?", String.class, replacementId));
+        assertTrue(storage.head("original", v2Key).isEmpty());
+        // no pending → 404 on second cancel
+        ex = assertThrows(ResponseStatusException.class,
+            () -> controller.cancelReplacement(submissionId));
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+    }
+
+    // ---------- Ticket 10: anonymization-issues (T27) + retry (T17/T18/T19) ----------
+
+    private UUID statusedSubmission(String status, String failureCode, boolean anonymized) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+            insert into submission(submission_id,exam_id,template_id,status,current_file_version,
+                version,object_key,failure_code)
+            values(?,?,?,?,?,?,?,?)""",
+            id, examId, UUID.randomUUID(), status, 1, 0, "old/v1.pdf", failureCode);
+        jdbc.update("""
+            insert into exam_file(file_id,submission_id,type,version,size_bytes,object_key,is_current)
+            values(?,?,'ORIGINAL',1,100,'old/v1.pdf',true)""",
+            UUID.randomUUID(), id);
+        if (anonymized) {
+            jdbc.update("""
+                insert into exam_file(file_id,submission_id,type,version,size_bytes,object_key,is_current)
+                values(?,?,'ANONYMIZED',1,90,'anon/v1.pdf',true)""",
+                UUID.randomUUID(), id);
+        }
+        return id;
+    }
+
+    @Test
+    void anonymizationIssue_t27_createsReviewThenReviewRequired_andReplays() {
+        UUID submissionId = statusedSubmission("READY_FOR_GRADING", null, true);
+        UUID reviewId = UUID.randomUUID();
+        when(resultClient.createAnonymizationIssue(eq(submissionId), eq(examId), eq(1),
+                any(), eq("vùng che thiếu"), isNull(), eq("idem-1")))
+            .thenReturn(Map.of("reviewId", reviewId, "status", "OPEN"));
+
+        var res = controller.createAnonymizationIssue(submissionId,
+            Map.of("reason", "vùng che thiếu"), null, "idem-1");
+
+        assertEquals(201, res.getStatusCode().value());
+        assertEquals(reviewId, res.getBody().get("reviewId"));
+        assertEquals("REVIEW_REQUIRED", jdbc.queryForObject(
+            "select status from submission where submission_id=?", String.class, submissionId));
+        assertEquals(1, jdbc.queryForObject(
+            "select count(*) from submission_event where submission_id=? and status='REVIEW_REQUIRED'",
+            Integer.class, submissionId));
+
+        // replay on REVIEW_REQUIRED returns the same unclosed review
+        when(resultClient.getReplaceAuthorization(submissionId)).thenReturn(Map.of(
+            "authorized", false, "reviewId", reviewId,
+            "reasonType", "ANONYMIZATION", "status", "OPEN"));
+        var replay = controller.createAnonymizationIssue(submissionId,
+            Map.of("reason", "vùng che thiếu"), null, "idem-1");
+        assertEquals(reviewId, replay.getBody().get("reviewId"));
+    }
+
+    @Test
+    void anonymizationIssue_wrongState_409() {
+        UUID submissionId = statusedSubmission("UPLOADED", null, false);
+        var ex = assertThrows(ResponseStatusException.class,
+            () -> controller.createAnonymizationIssue(submissionId,
+                Map.of("reason", "x"), null, null));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        // READY_FOR_GRADING but no ANONYMIZED file → 409
+        UUID noAnon = statusedSubmission("READY_FOR_GRADING", null, false);
+        ex = assertThrows(ResponseStatusException.class,
+            () -> controller.createAnonymizationIssue(noAnon,
+                Map.of("reason", "x"), null, null));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+    }
+
+    @Test
+    void retry_failedValidateExhausted_t19_requeuesValidate() {
+        UUID submissionId = failedSubmission("VALIDATE_RETRY_EXHAUSTED", 1);
+
+        Map<String, Object> res = controller.retry(submissionId,
+            Map.of("step", "VALIDATE"), null);
+
+        assertEquals("VALIDATING", res.get("status"));
+        assertEquals("VALIDATING", jdbc.queryForObject(
+            "select status from submission where submission_id=?", String.class, submissionId));
+        assertEquals(1, jdbc.queryForObject(
+            "select count(*) from processing_job where submission_id=? and step='VALIDATE' and status='QUEUED'",
+            Integer.class, submissionId));
+        verify(rabbitTemplate).convertAndSend(eq("submission.processing"), eq("validate"),
+            any(vn.edu.examgrading.submission.messaging.ValidationWorker.ValidateJobMessage.class));
+    }
+
+    @Test
+    void retry_reviewRequired_reprocess_t18_overwriteAndTemplateSwap() {
+        UUID submissionId = statusedSubmission("REVIEW_REQUIRED", null, true);
+        UUID reviewId = UUID.randomUUID();
+        UUID newTemplate = seedTemplate();
+        when(resultClient.getReviewState(reviewId)).thenReturn(Map.of(
+            "reviewId", reviewId, "submissionId", submissionId.toString(),
+            "status", "ACTION_AUTHORIZED", "authorizedAction", "REPROCESS",
+            "technicalCode", "MASK_INSUFFICIENT", "reasonType", "ANONYMIZATION"));
+        when(gradingClient.attemptSummary(submissionId))
+            .thenReturn(Map.of("confirmedCount", 0));
+        when(identityClient.createPseudonym(eq(examId), eq(submissionId), anyString()))
+            .thenReturn(null);
+
+        Map<String, Object> res = controller.retry(submissionId, Map.of(
+            "step", "ANONYMIZE", "reviewId", reviewId.toString(),
+            "templateId", newTemplate.toString()), null);
+
+        assertEquals("ANONYMIZING", res.get("status"));
+        assertEquals("ANONYMIZING", jdbc.queryForObject(
+            "select status from submission where submission_id=?", String.class, submissionId));
+        assertEquals(newTemplate, jdbc.queryForObject(
+            "select template_id from submission where submission_id=?", UUID.class, submissionId));
+        Map<String, Object> job = jdbc.queryForMap(
+            "select step,overwrite,template_id from processing_job where submission_id=?", submissionId);
+        assertEquals("ANONYMIZE", job.get("step"));
+        assertEquals(true, job.get("overwrite"));
+        assertEquals(newTemplate, job.get("template_id"));
+        verify(resultClient).resolveReviewAction(reviewId, "REPROCESS");
+        verify(rabbitTemplate).convertAndSend(eq("submission.processing"), eq("anonymize"),
+            any(vn.edu.examgrading.submission.messaging.AnonymizeJobMessage.class));
     }
 }

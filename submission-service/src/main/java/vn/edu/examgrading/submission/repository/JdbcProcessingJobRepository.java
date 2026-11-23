@@ -31,6 +31,18 @@ public class JdbcProcessingJobRepository implements ProcessingJobRepository {
     }
 
     @Override
+    public void insertQueued(UUID jobId, UUID submissionId, String step, int fileVersion,
+            UUID templateId, boolean force, boolean overwrite) {
+        String sql = """
+            INSERT INTO processing_job (
+                job_id, submission_id, step, status, attempt, file_version,
+                force, overwrite, template_id, created_at
+            ) VALUES (?, ?, ?, 'QUEUED', 0, ?, ?, ?, ?, now())
+            """;
+        jdbcTemplate.update(sql, jobId, submissionId, step, fileVersion, force, overwrite, templateId);
+    }
+
+    @Override
     public void updateJobStatus(UUID jobId, String status, int attempt) {
         String sql = """
             UPDATE processing_job

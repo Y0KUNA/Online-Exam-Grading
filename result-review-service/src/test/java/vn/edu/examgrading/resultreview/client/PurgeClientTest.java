@@ -45,6 +45,7 @@ class PurgeClientTest {
             .thenReturn(ResponseEntity.ok("{\"status\":\"DONE\"}"));
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private HttpHeaders lastHeaders() {
         ArgumentCaptor<HttpEntity> captor = ArgumentCaptor.forClass(HttpEntity.class);
         verify(restTemplate, atLeastOnce()).exchange(any(URI.class), any(HttpMethod.class),

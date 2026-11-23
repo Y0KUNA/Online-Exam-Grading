@@ -58,6 +58,28 @@ public class PurgeClient {
             idempotencyKey(resultId), "exam-grading");
     }
 
+    /**
+     * T28: council DISMISS of a MASK_INSUFFICIENT review returns the
+     * submission to READY_FOR_GRADING. Idempotent — the status endpoint
+     * replays 200 when already at the destination.
+     */
+    public void resumeGrading(UUID submissionId) {
+        String url = submissionBaseUrl + "/internal/v1/submissions/" + submissionId + "/status";
+        SignedServiceRequest signed = ServiceRequestSigner.sign(
+            secret, CALLER, UUID.randomUUID(), Instant.now());
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Service-Caller", signed.caller());
+        headers.set("X-Service-Request-Id", signed.requestId().toString());
+        headers.set("X-Service-Timestamp", signed.timestamp().toString());
+        headers.set("X-Service-Signature", signed.signature());
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        restTemplate.postForEntity(URI.create(url),
+            new HttpEntity<>(java.util.Map.of(
+                "newStatus", "READY_FOR_GRADING",
+                "expectedStatus", "REVIEW_REQUIRED",
+                "progress", 100), headers), String.class);
+    }
+
     /** Identity purge — deletes pseudonym + submission_binding. */
     public void purgeIdentity(UUID resultId, UUID submissionId) {
         delete(identityBaseUrl + "/internal/v1/identity/submissions/" + submissionId + "/pseudonym",

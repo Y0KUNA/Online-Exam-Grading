@@ -47,6 +47,7 @@ class ValidationWorkerTest {
     @Mock private SubmissionRepositoryMarker submissionRepo;
     @Mock private ProcessingJobRepository processingJobRepo;
     @Mock private PaperTemplateRepository templateRepo;
+    @Mock private vn.edu.examgrading.submission.repository.ExamFileRepository examFileRepo;
     @Mock private SubmissionEventRepository eventRepo;
     @Mock private IdentityClient identityClient;
     @Mock private ResultClient resultClient;
@@ -65,7 +66,7 @@ class ValidationWorkerTest {
         clock = Clock.systemUTC();
         worker = new ValidationWorker(
             rabbitTemplate, storageGateway, submissionRepo, processingJobRepo,
-            templateRepo, eventRepo, identityClient, resultClient, jdbcTemplate, clock);
+            templateRepo, examFileRepo, eventRepo, identityClient, resultClient, jdbcTemplate, clock);
     }
 
     private void stubJob(int attempt) {
@@ -79,6 +80,11 @@ class ValidationWorkerTest {
             submissionId, examId, templateId, status,
             fileVersion, 0, null, 1024L, null, null, objectKey, null, 0, Instant.now());
         when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
+        // Lenient: early-exit paths (stale fileVersion, wrong status) never reach it.
+        lenient().when(examFileRepo.findCurrentOriginal(submissionId))
+            .thenReturn(objectKey == null ? Optional.empty()
+                : Optional.of(new vn.edu.examgrading.submission.repository.ExamFileRepository.OriginalFile(
+                    UUID.randomUUID(), fileVersion, 1024L, objectKey)));
     }
 
     private void stubJobAndSubmission(int attempt) {

@@ -216,11 +216,16 @@ public class InternalSubmissionController {
         String submissionKey = jdbc.query("""
             select object_key from submission where submission_id=?""",
             (rs, n) -> rs.getString(1), submissionId).stream().findFirst().orElse(null);
+        // Pending/completed replacement objects also live in the original bucket.
+        var replacementKeys = jdbc.query("""
+            select object_key from file_replacement where submission_id=?""",
+            (rs, n) -> rs.getString(1), submissionId);
         java.util.Set<String> originalKeys = new java.util.HashSet<>();
         java.util.Set<String> anonymizedKeys = new java.util.HashSet<>();
         for (String[] row : keys) {
             ("ANONYMIZED".equals(row[0]) ? anonymizedKeys : originalKeys).add(row[1]);
         }
+        originalKeys.addAll(replacementKeys);
         if (submissionKey != null) {
             originalKeys.add(submissionKey);
         }
@@ -231,6 +236,7 @@ public class InternalSubmissionController {
             try { storage.delete(storageProps.anonymizedBucket(), key); } catch (RuntimeException ignored) { }
         }
 
+        jdbc.update("delete from file_replacement where submission_id=?", submissionId);
         jdbc.update("delete from exam_file where submission_id=?", submissionId);
         jdbc.update("delete from submission_event where submission_id=?", submissionId);
         jdbc.update("delete from processing_job where submission_id=?", submissionId);

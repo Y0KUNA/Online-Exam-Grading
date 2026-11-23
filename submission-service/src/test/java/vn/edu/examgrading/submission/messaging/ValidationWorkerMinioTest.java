@@ -46,6 +46,7 @@ class ValidationWorkerMinioTest {
     @Mock private SubmissionRepositoryMarker submissionRepo;
     @Mock private ProcessingJobRepository processingJobRepo;
     @Mock private PaperTemplateRepository templateRepo;
+    @Mock private vn.edu.examgrading.submission.repository.ExamFileRepository examFileRepo;
     @Mock private SubmissionEventRepository eventRepo;
     @Mock private IdentityClient identityClient;
     @Mock private ResultClient resultClient;
@@ -75,7 +76,7 @@ class ValidationWorkerMinioTest {
         storage = S3ObjectStorage.create(props, Clock.systemUTC());
         worker = new ValidationWorker(
             rabbitTemplate, storage, submissionRepo, processingJobRepo,
-            templateRepo, eventRepo, identityClient, resultClient, jdbcTemplate, Clock.systemUTC());
+            templateRepo, examFileRepo, eventRepo, identityClient, resultClient, jdbcTemplate, Clock.systemUTC());
 
         objectKey = "integration/" + submissionId + "/v1.pdf";
         when(processingJobRepo.findJobById(jobId))
@@ -93,6 +94,9 @@ class ValidationWorkerMinioTest {
             submissionId, examId, templateId, SubmissionStatus.UPLOADED,
             1, 0, null, 1024L, null, null, objectKey, null, 0, Instant.now());
         when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(examFileRepo.findCurrentOriginal(submissionId))
+            .thenReturn(Optional.of(new vn.edu.examgrading.submission.repository.ExamFileRepository.OriginalFile(
+                UUID.randomUUID(), 1, 1024L, objectKey)));
         // T05: UPLOADED → VALIDATING on receipt — stubbed so strict stubbing does
         // not flag the FAILED transition stub below as an argument mismatch.
         when(submissionRepo.transition(submissionId, SubmissionStatus.UPLOADED, SubmissionStatus.VALIDATING, 50))

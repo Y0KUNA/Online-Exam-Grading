@@ -230,6 +230,11 @@ public class PageMasker {
         }
     }
 
+    /** §6.4 region validation exposed for anonymization-preview overrides (same rules, no side effects). */
+    public void validateRegionsForPreview(MaskRegions regions) throws MaskException {
+        validateRegions(regions);
+    }
+
     private void validateRegions(MaskRegions regions) throws MaskException {
         if (regions == null || regions.mask() == null || regions.print() == null) {
             throw new MaskException("MASK_REGION_MISSING", "template has no mask/print region");

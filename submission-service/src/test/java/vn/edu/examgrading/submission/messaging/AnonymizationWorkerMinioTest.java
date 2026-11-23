@@ -73,9 +73,14 @@ class AnonymizationWorkerMinioTest {
 
     @BeforeEach
     void setUp() {
+        // .env's S3_INTERNAL_ENDPOINT is the docker-internal hostname; from the
+        // host the published port is localhost:9000 (system env still wins).
+        String endpoint = System.getenv("S3_INTERNAL_ENDPOINT") != null
+            && !System.getenv("S3_INTERNAL_ENDPOINT").isBlank()
+            ? System.getenv("S3_INTERNAL_ENDPOINT") : "http://localhost:9000";
         StorageProperties props = new StorageProperties(
             "s3",
-            env("S3_INTERNAL_ENDPOINT", "http://localhost:9000"),
+            endpoint,
             env("S3_REGION", "us-east-1"),
             env("S3_ACCESS_KEY", "minioadmin"),
             env("S3_SECRET_KEY", "change-me"),
@@ -164,6 +169,18 @@ class AnonymizationWorkerMinioTest {
 
     private static String env(String key, String fallback) {
         String value = System.getenv(key);
-        return (value == null || value.isBlank()) ? fallback : value;
+        if (value != null && !value.isBlank()) return value;
+        try {
+            java.nio.file.Path envFile = java.nio.file.Path.of("..", ".env");
+            if (java.nio.file.Files.exists(envFile)) {
+                for (String line : java.nio.file.Files.readAllLines(envFile)) {
+                    if (line.startsWith(key + "=")) {
+                        String v = line.substring(line.indexOf('=') + 1).trim();
+                        if (!v.isBlank()) return v;
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
+        return fallback;
     }
 }

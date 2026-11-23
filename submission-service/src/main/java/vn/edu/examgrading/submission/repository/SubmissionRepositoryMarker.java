@@ -55,4 +55,14 @@ public interface SubmissionRepositoryMarker {
 
     /** Whether an UPLOADING submission still references this object key (orphan cleanup guard). */
     boolean existsUploadingWithObjectKey(String objectKey);
+
+    /**
+     * §4.4 replace-file commit: REVIEW_REQUIRED|FAILED → UPLOADED with the new
+     * {@code current_file_version}, failure_code cleared, progress reset.
+     * Returns affected rows — 0 when the status raced away.
+     */
+    int completeReplacement(UUID submissionId, int fileVersion);
+
+    /** Q-15: swap the submission's template for a reprocess retry (T18). */
+    int updateTemplateId(UUID submissionId, UUID templateId);
 }

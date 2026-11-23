@@ -357,24 +357,37 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Mức độ ưu tiên:** Cao
 **Dependencies:** TICKET 02, TICKET 03, TICKET 05
 **Ước tính:** 8-10 giờ
-**Trạng thái:** ⬜ CHƯA THỰC HIỆN
+**Trạng thái:** ✅ HOÀN THÀNH
 **Luồng liên quan:** Upload (file version mới, validate/anonymize lại) + Chấm (hủy assignment/attempt DRAFT qua discard-open-work) + Review (đóng Review `REPLACE_FILE`) + Identity (giữ phách)
 
 #### Task con:
-1. Implement `POST /api/v1/submissions/{id}/replace-file` (EO)
-   - Body `{reason, fileName, fileSizeBytes, contentType:"application/pdf"}`, reason bắt buộc
-   - Kiểm `fileSizeBytes ≤ 52428800`, version = `current_file_version + 1`, tạo `file_replacement` row + presigned POST
-2. Implement `POST …/replace-file/{replacementId}/complete`
-   - HEAD object; kiểm điều kiện T24 (Review ACTION_AUTHORIZED + REPLACE_FILE, không lượt CONFIRMED)
-   - Theo thứ tự: (1) `discard-open-work` idempotent (2) một transaction: ghi ExamFile ORIGINAL mới, đổi status → UPLOADED, audit REPLACE_FILE_COMPLETED
-   - Publish job validate với `fileVersion` mới
-3. Implement `DELETE …/replace-file` (hủy replacement đang chờ)
-4. Migration bảng `file_replacement` (§4.4: replacement_id, submission_id, version, object_key, declared_size_bytes, status, expires_at…)
-5. Xử lý lại từ VALIDATE (T05…): đọc trang/kích thước ±5%, SHA-256 `v n`, **giữ nguyên phách** (Identity `POST /pseudonyms` cùng `idempotencyKey=submissionId:pseudonym` trả phách cũ)
-6. Bản ORIGINAL cũ giữ nguyên đến hết retention, chỉ EO xem qua `?version=`; GRADER chỉ nhận ANONYMIZED hiện hành
-7. Nếu reprocess vào REVIEW_REQUIRED/FAILED mới → EO được replace-file lần nữa (§4.4)
-8. Audit `REPLACE_FILE_REQUESTED/COMPLETED` (reason, version, actor_id — không object key/URL)
-9. Unit + integration tests
+1. ✅ Implement `POST /api/v1/submissions/{id}/replace-file` (EO)
+   - Body `{reason, fileName, fileSizeBytes, contentType:"application/pdf"}`, reason bắt buộc → 422 `REASON_REQUIRED`
+   - Kiểm `fileSizeBytes ≤ 52428800` (422 `INVALID_FILE_SIZE`), version = `current_file_version + 1`, key `{examId}/{submissionId}/v{n}.pdf`, tạo `file_replacement` row + presigned POST
+   - Điều kiện §4.4 check sớm: `FAILED` + `failure_code∈{PDF_CORRUPT,PAGE_COUNT_INVALID}` không cần Review; `REVIEW_REQUIRED` → probe Result `GET /internal/v1/reviews/replace-authorization` (Review `ACTION_AUTHORIZED`/`REPLACE_FILE` loại `ANONYMIZATION|GRADER_FLAG`); còn lại 409 `REPLACE_NOT_ALLOWED`/`REVIEW_NOT_AUTHORIZED`
+   - `GradingClient` mới (HMAC `submission-service`) gọi `attempt-summary`: `confirmedCount>0` → 409 `ATTEMPTS_EXIST`; `file_replacement` PENDING chưa hết hạn → 409 `REPLACEMENT_IN_PROGRESS` (partial unique index + DuplicateKey → cùng 409)
+   - Migration V16 `file_replacement` đúng DDL spec; result-review V4 thêm `authorized_action`/`resolution_type`/`created_by` cho review; audit `REPLACE_FILE_REQUESTED` (reason/version/actor, không key/URL); purge endpoint đã dọn cả `file_replacement` rows + objects
+2. ✅ Implement `POST …/replace-file/{replacementId}/complete`
+   - HEAD object (bucket `original`); kiểm lại điều kiện (state + review authorized/resolved + `attempt-summary` không CONFIRMED)
+   - Theo thứ tự: (1) `discard-open-work` idempotent (`Idempotency-Key=replacementId`, 5xx → 503 `GRADING_UNAVAILABLE` không mutate gì) → `resolveReplaceReview` (chỉ REVIEW_REQUIRED) → (2) một transaction: `clearCurrent` + `insertOriginalVersion` sha256 null + `completeReplacement` REVIEW_REQUIRED|FAILED→UPLOADED (clear failure_code, version+1) + `markCompleted` + audit `REPLACE_FILE_COMPLETED` → (3) `insertQueued(VALIDATE, file_version=n)` + publish `validate`
+   - `file_replacement=COMPLETED` replay → 200 idempotent `{status:"UPLOADED",version}`; `resolvedReplaceFile` flag ở replace-authorization probe chịu được retry sau khi review đã đóng; lỗi: 409 `REPLACEMENT_EXPIRED` (auto `markExpired`), 409 `UPLOAD_NOT_FOUND`, 422 `FILE_TOO_LARGE` (xóa object + `CANCELLED`, submission giữ trạng thái cũ)
+3. ✅ Implement `DELETE …/replace-file` (hủy replacement đang chờ)
+   - `cancelReplacement`: submission 404 → `findPending` (PENDING chưa hết hạn) → `markCancelled` + xóa object best-effort; không có → 404 `REPLACEMENT_NOT_FOUND`; controller trả 204
+   - Gateway: thêm `DELETE /api/v1/submissions/**` → EXAM_OFFICE (trước rơi vào `anyExchange().authenticated()` — mọi role đều gọi được)
+4. ✅ Migration bảng `file_replacement` (§4.4: replacement_id, submission_id FK, version, object_key, declared_size_bytes CHECK ≤52428800, reason, status CHECK PENDING/COMPLETED/EXPIRED/CANCELLED, upload_expires_at, requested_by, created_at, completed_at, UNIQUE(submission_id,version) + partial unique 1 PENDING/submission) — V16, đã verify Flyway migrate trên `submission_it`
+5. ✅ Xử lý lý lại từ VALIDATE (T05…): đọc trang/kích thước ±5%, SHA-256 `v n`, **giữ nguyên phách** (Identity `POST /pseudonyms` cùng `idempotencyKey=submissionId:pseudonym` trả phách cũ)
+   - `ValidationWorker` đọc object từ `examFileRepo.findCurrentOriginal` thay `submission.objectKey()` — sau replace-file key submission vẫn trỏ bản cũ, exam_file row mới mang key `v n` (AnonymizationWorker đã version-aware sẵn); `updateExamFileSha256`/`publishAnonymizeJob` đã đúng version qua `is_current` + `currentFileVersion`
+6. ✅ Bản ORIGINAL cũ giữ nguyên đến hết retention, chỉ EO xem qua `?version=`; GRADER chỉ nhận ANONYMIZED hiện hành
+   - Public endpoint mới `GET /api/v1/submissions/{id}/files/{type}/access?version=` (gateway `GET /api/v1/submissions/**` → EO sẵn): ORIGINAL `?version=n` xem bản cũ qua `findByTypeAndVersion` (default = current), ANONYMIZED luôn current + 409 `FILE_NOT_READY` khi VALIDATING/ANONYMIZING; presigned GET 5 phút từ đúng bucket; `version<1` → 400, type lạ/version không có → 404; trả `{url,expiresAt,version}` không lộ object key trong response (URL presigned là của gateway)
+7. ✅ Nếu reprocess vào REVIEW_REQUIRED/FAILED mới → EO được replace-file lần nữa (§4.4)
+   - Eligibility check vốn stateless theo submission status + failure_code + review probe → re-fail `PDF_CORRUPT`/`PAGE_COUNT_INVALID` hoặc review `ACTION_AUTHORIZED(REPLACE_FILE)` mới đều pass; version tiếp tục `current_file_version+1` (v3, v4…), key/object/replacement row đều distinct
+   - Fix edge: `file_replacement` PENDING quá hạn mà scheduler chưa quét vẫn giữ partial unique slot → `expireOverdue(submissionId, now)` lazy-expire ngay trong `replaceFile` trước khi check/insert (tránh 409 `REPLACEMENT_IN_PROGRESS` kẹt); scheduler sweep định kỳ vẫn là lớp chính
+8. ✅ Audit `REPLACE_FILE_REQUESTED/COMPLETED` (reason, version, actor_id — không object key/URL)
+   - REQUESTED: `actor_id`=JWT sub (fallback nil→null), detail `{reason,version}`; COMPLETED: `actor_id`=`file_replacement.requested_by`, cùng detail shape — cả hai không chứa object_key/URL/presigned URL
+9. ✅ Unit + integration tests
+   - Unit (`SubmissionUploadServiceImplTest`, 47 tests): replaceFile payload/eligibility/ATTEMPTS_EXIST/REPLACEMENT_IN_PROGRESS+DuplicateKey race/re-replace version increment; completeReplacement happy FAILED+REVIEW_REQUIRED, idempotent COMPLETED, expired/missing/too-large, discard-503 không mutate; cancelReplacement pending/none
+   - IT (`SubmissionPublicApiIT`, 10 tests, Postgres thật): `replaceFileFlow_endToEnd` (PENDING→upload→complete: exam_file v1 demoted+v2 current, submission UPLOADED+failure_code cleared, VALIDATE job file_version=2, COMPLETED, event/audit, replay không tạo job thứ 2), `replaceFile_ineligibleStates_andCancel` (UPLOADED→409, REVIEW_REQUIRED unauthorized→409, cancel→CANCELLED+object xóa+404 lần 2)
+   - `ValidationWorkerTest`/`MinioTest` cập nhật cho `findCurrentOriginal` (worker đọc đúng version mới)
 
 **Acceptance Criteria:**
 - Replace-file chỉ chạy khi đủ điều kiện T24
@@ -389,26 +402,39 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 03, TICKET 06
 **Ước tính:** 8-10 giờ
-**Trạng thái:** ⬜ CHƯA THỰC HIỆN
+**Trạng thái:** ✅ HOÀN THÀNH (6/6 task con)
 **Luồng liên quan:** Review (issues T27/T28, retry T17–T19) + Upload pipeline (worker overwrite ANONYMIZED) + dùng chung `PageMasker` với T03 + FILE_NOT_READY của T05 task 2
 
 #### Task con:
-1. Implement `POST /api/v1/submissions/{id}/anonymization-preview` (chỉ EO)
-   - Body `{version?, mode?:MASKED|OUTLINE, dpi?:50-200|ANON_RENDER_DPI, override?:{mask,print?}}`
-   - `override` thử tọa độ không lưu, kiểm theo §6.4 (ngoài [0,1] → 422 `INVALID_REGION`)
-   - Dùng **chung `PageMasker`** với worker (§7) — preview và kết quả thật không lệch
-   - Không lưu gì; chỉ audit `ANONYMIZATION_PREVIEWED`; giới hạn `PREVIEW_MAX_CONCURRENCY`, `PREVIEW_TIMEOUT_SECONDS`, rate limit 10 lần/phút/người
-2. Implement `POST /api/v1/submissions/{id}/anonymization-issues` (T27)
-   - Body `{reason}` bắt buộc; chỉ khi `READY_FOR_GRADING`, có ExamFile ANONYMIZED hiện hành, không Review chưa đóng
-   - Thứ tự: tạo Review `ANONYMIZATION`/`MASK_INSUFFICIENT` OPEN → transition T27 → `REVIEW_REQUIRED` (201 `{reviewId,status:"OPEN"}`)
-3. Implement `POST /api/v1/submissions/{id}/retry` mở rộng (T17/T18/T19)
-   - Body `{step, force?, reviewId?, templateId?}`
-   - `REVIEW_REQUIRED`: bắt buộc `reviewId` đang `ACTION_AUTHORIZED` với action tương ứng (`FORCE_ANONYMIZE`→T17, `REPROCESS`→T18)
-   - T18 reprocess: tạo ProcessingJob ANONYMIZE với `overwrite=true` + `templateId?` (đọc từ job, không tin message); template mới kiểm lại ±5% mọi trang → lệch thì T11, `template_id` giữ nguyên
-   - `FAILED`: T19 theo `failure_code` + step khớp
-4. Worker ANONYMIZE xử lý overwrite: ghi đè object cùng key `anonymized/{examId}/{submissionId}/v{n}.pdf`, update ExamFile, về `READY_FOR_GRADING` (T09); hết retry → `FAILED/ANONYMIZE_RETRY_EXHAUSTED`
-5. DISMISS Review `MASK_INSUFFICIENT` → T28 về `READY_FOR_GRADING` (phía Result/Review service)
-6. Unit + integration tests
+1. ✅ Implement `POST /api/v1/submissions/{id}/anonymization-preview` (chỉ EO)
+   - `AnonymizationPreviewService` + `AnonymizationPreviewController`: body `{version?, templateId?, mode?:MASKED|OUTLINE, dpi? (50-200 hoặc "ANON_RENDER_DPI"→`app.pdf.render-dpi`), override?:{mask,print?{fontName,fontSize,align}}}`
+   - `override` merge với regions của template (mask/print/font fields độc lập), validate §6.4 qua `PageMasker.validateRegionsForPreview` (public wrapper mới) → ngoài [0,1]/print ngoài mask → 422 `INVALID_REGION`; `dpi` sai → 422 `INVALID_DPI`; mode lạ → 422 `INVALID_MODE`
+   - MASKED: `pageMasker.anonymize(pdf, regions, "PHÁCH")` (placeholder, không gọi Identity) rồi render trang 1 PNG tại dpi — dùng chung PageMasker với worker nên không lệch; OUTLINE: render trang 1 gốc + khung đỏ (mask)/xanh (print)
+   - Headers: `X-Page-Width-Pt`, `X-Page-Height-Pt`, `X-Template-Deviation-Percent` (max |actual−template|/template % mọi trang, so `sourcePdf` page0 nếu có), `X-Size-Check: PASS|FAIL` (≤5%); response `image/png` + `Cache-Control: no-store` + `Content-Disposition: inline`
+   - Lỗi: UPLOADING/không có ORIGINAL → 409 `INVALID_STATE`; PDF hỏng/limit → 422 `PDF_CORRUPT`; template mask lỗi → 422 `TEMPLATE_MASK_ERROR`; timeout 15s → 408 `PREVIEW_TIMEOUT`; semaphore 2 → 429 `PREVIEW_BUSY`; rate limit 10/phút/actor (parse JWT sub) → 429 `RATE_LIMITED`
+   - Config `app.preview.*` (`PREVIEW_MAX_CONCURRENCY`, `PREVIEW_TIMEOUT_SECONDS`, `PREVIEW_RATE_LIMIT_PER_MINUTE`, `PREVIEW_MIN/MAX_DPI`); audit `ANONYMIZATION_PREVIEWED` `{version,mode}` không ảnh; OpenAPI `gateway.yaml` đã thêm
+2. ✅ Implement `POST /api/v1/submissions/{id}/anonymization-issues` (T27)
+   - `createAnonymizationIssue`: reason trống → 422 `REASON_REQUIRED`; chỉ `READY_FOR_GRADING` (status khác → 409 `INVALID_STATE`, trừ `REVIEW_REQUIRED` replay → trả unclosed ANONYMIZATION review OPEN); bắt buộc ExamFile ANONYMIZED current → 409
+   - Thứ tự đúng spec: `ResultClient.createAnonymizationIssue` → `POST /internal/v1/reviews` (technicalCode `MASK_INSUFFICIENT`, detail `{fileVersion,templateId}`, createdBy=JWT sub nếu là UUID, forward `Idempotency-Key`) → `transition(READY_FOR_GRADING→REVIEW_REQUIRED,100)` + event; race moved=0 nhưng đã REVIEW_REQUIRED → trả review idempotent
+   - Result `createReview` nâng cấp: check unclosed review trước insert — cùng `(technicalCode,fileVersion)` → replay trả review cũ, khác → 409 `REVIEW_ALREADY_OPEN` (trước đây chỉ nhờ unique index → 500); worker path tương thích (không gửi fileVersion → unclosed bất kỳ → 409)
+   - 201 `{reviewId,status:"OPEN"}`; gateway `POST /api/v1/submissions/**` → EO sẵn
+3. ✅ Implement `POST /api/v1/submissions/{id}/retry` mở rộng (T17/T18/T19)
+   - `retry(submissionId, step, force?, reviewId?, templateId?)`: step ∉ {VALIDATE,ANONYMIZE} → 422 `INVALID_STEP`; status khác FAILED/REVIEW_REQUIRED → 409 `INVALID_STATE`
+   - **T19 FAILED**: chỉ `VALIDATE_RETRY_EXHAUSTED`/`ANONYMIZE_RETRY_EXHAUSTED` + step khớp (sai → 422 `STEP_MISMATCH`; code khác → 409, PDF_CORRUPT/PAGE_COUNT_INVALID dùng replace-file); FAILED→VALIDATING/ANONYMIZING + `insertQueued` + publish (ANONYMIZE refetch pseudonym cùng deterministic key)
+   - **T17/T18 REVIEW_REQUIRED**: bắt buộc `reviewId` (422 `REVIEW_ID_REQUIRED`); `getReviewState` probe — phải `ACTION_AUTHORIZED` + action khớp step (`FORCE_ANONYMIZE`→VALIDATE bắt buộc `force=true`, `REPROCESS`→ANONYMIZE), sai → 409 `REVIEW_NOT_AUTHORIZED`; `attempt-summary` confirmed>0 → 409 `ATTEMPTS_EXIST`; `templateId` chỉ cho REPROCESS: không tồn tại → 404 `TEMPLATE_NOT_FOUND`, inactive → 422 `TEMPLATE_INACTIVE`, action khác → 422 `INVALID_TEMPLATE_ID`
+   - Consume authorization **trước** (`resolveReviewAction` → RESOLVED(FORCE_ANONYMIZE|REPROCESS), idempotent) rồi transition + `insertQueued(force,overwrite)` — T18 `MASK_INSUFFICIENT` → `overwrite=true`, `templateId` mới → `updateTemplateId` (Q-15 chỉ đổi submission, không đổi exam); publish message tương ứng
+   - Result-review thêm `GET /internal/v1/reviews/{id}/state` + `POST /internal/v1/reviews/resolve-action` (idempotent, RESOLVED khác resolution → 409 `REVIEW_ALREADY_DECIDED`); `insertQueued` overload có `force`/`overwrite` (worker đọc từ job row, không tin message)
+4. ✅ Worker ANONYMIZE xử lý overwrite: ghi đè object cùng key `anonymized/{examId}/{submissionId}/v{n}.pdf`, update ExamFile, về `READY_FOR_GRADING` (T09); hết retry → `FAILED/ANONYMIZE_RETRY_EXHAUSTED`
+   - Đã có sẵn từ T02/T03, verify: `overwrite` đọc từ `ProcessingJob` (không tin message); `overwriteInPlace` chịu `READY_FOR_GRADING` (reprocess không bị nhầm lỗi kỹ thuật → retry vô hạn); `updateAnonymized` update row `is_current` cùng key, fallback `insertAnonymized`; `handleTechnicalError` → `ANONYMIZE_RETRY_EXHAUSTED` sau max attempt
+   - Fix test bug: `AnonymizationWorkerMinioTest.env()` không đọc `.env` → S3 secret fallback sai → auth fail; đã sửa đọc `.env` + endpoint localhost như `SchedulerJobsIT`
+5. ✅ DISMISS Review `MASK_INSUFFICIENT` → T28 về `READY_FOR_GRADING` (phía Result/Review service)
+   - `SubmissionStatusMachine`: thêm transition `REVIEW_REQUIRED → READY_FOR_GRADING` (T28)
+   - `ReviewController.decide()` viết lại theo ma trận §3.2: `reason` trống → 422 `REASON_REQUIRED`; `decisionType` ngoài bảng → 422 `DECISION_NOT_ALLOWED`; chỉ `OPEN` → 409 `REVIEW_ALREADY_DECIDED`; sau REGRADE xong chỉ còn `SET_FINAL_SCORE`; set `authorized_action` (ACTION_AUTHORIZED) hoặc `resolution_type` (RESOLVED) đúng cột V4
+   - DISMISS/SET_FINAL_SCORE → `RESOLVED`; **DISMISS + ANONYMIZATION/MASK_INSUFFICIENT → gọi `PurgeClient.resumeGrading` TRƯỚC** (POST `/internal/v1/submissions/{id}/status` HMAC, `expectedStatus=REVIEW_REQUIRED` → `READY_FOR_GRADING`, idempotent 200) rồi mới đóng review — lỗi giữa chừng để review OPEN cho retry an toàn
+   - `PurgeClient.resumeGrading` tái dùng HMAC `result-review-service` + status endpoint có sẵn (STATUS_CALLERS đã gồm result-review-service)
+6. ✅ Unit + integration tests
+   - Unit: `AnonymizationPreviewServiceTest` 10 (MASKED/OUTLINE, override, dpi, 409/422, rate limit, audit); `SubmissionUploadServiceImplTest` +10 (anonymization-issues 5, retry T17/T18/T19 5); `ReviewControllerTest` 6 (decision matrix, DISMISS→T28, DECISION_NOT_ALLOWED)
+   - IT `SubmissionPublicApiIT` +4 trên Postgres thật: T27 tạo review→REVIEW_REQUIRED + replay idempotent; sai trạng thái/thiếu ANONYMIZED → 409; T19 FAILED→VALIDATING + job QUEUED + publish; T18 REPROCESS→ANONYMIZING + `overwrite=true` + `template_id` swap + `resolveReviewAction` + publish anonymize — tổng 14/14 PASS
 
 **Acceptance Criteria:**
 - Preview MASKED/OUTLINE đúng pixel, override không lưu

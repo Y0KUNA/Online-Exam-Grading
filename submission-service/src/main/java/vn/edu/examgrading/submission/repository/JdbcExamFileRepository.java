@@ -73,6 +73,21 @@ public class JdbcExamFileRepository implements ExamFileRepository {
     }
 
     @Override
+    public Optional<OriginalFile> findByTypeAndVersion(UUID submissionId, String type, int version) {
+        String sql = """
+            SELECT file_id, version, size_bytes, object_key
+            FROM exam_file
+            WHERE submission_id = ? AND type = ? AND version = ?
+            """;
+        return jdbcTemplate.query(sql, (rs, rowNum) -> new OriginalFile(
+            rs.getObject("file_id", UUID.class),
+            rs.getInt("version"),
+            rs.getLong("size_bytes"),
+            rs.getString("object_key")
+        ), submissionId, type, version).stream().findFirst();
+    }
+
+    @Override
     public void insertAnonymized(UUID fileId, UUID submissionId, int version, long sizeBytes, String objectKey, String sha256) {
         String sql = """
             INSERT INTO exam_file (
@@ -110,6 +125,23 @@ public class JdbcExamFileRepository implements ExamFileRepository {
 
     private Instant toInstant(OffsetDateTime offsetDateTime) {
         return offsetDateTime == null ? null : offsetDateTime.toInstant();
+    }
+
+    @Override
+    public void insertOriginalVersion(UUID fileId, UUID submissionId, int version,
+        long sizeBytes, String objectKey) {
+        jdbcTemplate.update("""
+            INSERT INTO exam_file (file_id, submission_id, type, version,
+                size_bytes, object_key, sha256, is_current)
+            VALUES (?, ?, 'ORIGINAL', ?, ?, ?, null, true)
+            """, fileId, submissionId, version, sizeBytes, objectKey);
+    }
+
+    @Override
+    public void clearCurrent(UUID submissionId) {
+        jdbcTemplate.update(
+            "UPDATE exam_file SET is_current = false WHERE submission_id = ? AND is_current = true",
+            submissionId);
     }
 
     @Override

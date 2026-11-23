@@ -103,6 +103,76 @@ paths:
       responses:
         '200': { description: Submission is UPLOADED and validation is queued }
         '409': { description: Upload missing, expired, or no longer completable }
+  /api/v1/submissions/{submissionId}/replace-file:
+    parameters: [{ name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      summary: Request a scan replacement (EXAM_OFFICE, spec 10 §4.4 step 1)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, fileName, fileSizeBytes, contentType]
+              properties:
+                reason: { type: string }
+                fileName: { type: string }
+                fileSizeBytes: { type: integer, format: int64, maximum: 52428800 }
+                contentType: { type: string, enum: [application/pdf] }
+      responses:
+        '201': { description: PENDING replacement created with presigned POST upload }
+        '404': { description: Submission not found }
+        '409': { description: 'REPLACE_NOT_ALLOWED, REVIEW_NOT_AUTHORIZED, ATTEMPTS_EXIST, or REPLACEMENT_IN_PROGRESS' }
+        '422': { description: 'REASON_REQUIRED, UNSUPPORTED_CONTENT_TYPE, or INVALID_FILE_SIZE' }
+  /api/v1/submissions/{submissionId}/files/{type}/access:
+    parameters:
+      - { name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: type, in: path, required: true, schema: { type: string, enum: [ORIGINAL, ANONYMIZED] } }
+      - { name: version, in: query, schema: { type: integer } }
+    get:
+      summary: Presigned GET for a file version (EXAM_OFFICE, spec 10 §4.4)
+      description: ORIGINAL accepts ?version=n (default current; superseded scans viewable until retention). ANONYMIZED always serves the current version; 409 FILE_NOT_READY while reprocessing.
+      responses:
+        '200': { description: '{url, expiresAt, version}' }
+        '403': { description: Role is not EXAM_OFFICE }
+        '404': { description: Submission or file version not found }
+        '409': { description: FILE_NOT_READY }
+  /api/v1/submissions/{submissionId}/anonymization-preview:
+    parameters:
+      - { name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: Anonymization preview page 1 (EXAM_OFFICE, spec 10 §4.5)
+      description: Renders page 1 as the grader would see it (MASKED) or with region outlines (OUTLINE). Body {version?, templateId?, mode?, dpi?, override?}. Returns image/png, Cache-Control no-store; nothing is persisted except an ANONYMIZATION_PREVIEWED audit row.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version: { type: integer }
+                templateId: { type: string, format: uuid }
+                mode: { type: string, enum: [MASKED, OUTLINE] }
+                dpi: { description: '50-200 or "ANON_RENDER_DPI"' }
+                override:
+                  type: object
+                  properties:
+                    mask: { $ref: '#/components/schemas/Region' }
+                    print: { $ref: '#/components/schemas/Region' }
+      responses:
+        '200':
+          description: PNG image of page 1
+          headers:
+            X-Page-Width-Pt: { schema: { type: number } }
+            X-Page-Height-Pt: { schema: { type: number } }
+            X-Template-Deviation-Percent: { schema: { type: number } }
+            X-Size-Check: { schema: { type: string, enum: [PASS, FAIL] } }
+          content:
+            image/png: {}
+        '403': { description: Role is not EXAM_OFFICE }
+        '409': { description: INVALID_STATE (UPLOADING / no ORIGINAL) }
+        '422': { description: INVALID_REGION / INVALID_DPI / INVALID_MODE / PDF_CORRUPT / TEMPLATE_MASK_ERROR }
+        '429': { description: PREVIEW_BUSY or RATE_LIMITED }
   /api/v1/reviews:
     get:
       summary: Review projection for EXAM_OFFICE or COUNCIL; excludes candidate identity

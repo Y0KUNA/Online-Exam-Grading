@@ -8,6 +8,10 @@ public interface ProcessingJobRepository {
 
     void insertQueued(UUID jobId, UUID submissionId, String step, int fileVersion, UUID templateId);
 
+    /** T17/T18 retry jobs carry force/overwrite flags read back by the workers. */
+    void insertQueued(UUID jobId, UUID submissionId, String step, int fileVersion,
+            UUID templateId, boolean force, boolean overwrite);
+
     /** Update job status and increment attempt. */
     void updateJobStatus(UUID jobId, String status, int attempt);
 

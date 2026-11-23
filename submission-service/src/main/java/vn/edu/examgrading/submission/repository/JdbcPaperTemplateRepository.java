@@ -1,9 +1,12 @@
 package vn.edu.examgrading.submission.repository;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CropRegion;
+import vn.edu.examgrading.submission.repository.PaperTemplateRepository.RedactionRegion;
 
 /**
  * JDBC-backed implementation of {@link PaperTemplateRepository} (TICKET 03).
@@ -64,7 +67,23 @@ public class JdbcPaperTemplateRepository implements PaperTemplateRepository {
             String fontName = print.path("fontName").asText("Helvetica");
             double fontSize = print.path("fontSize").asDouble(12.0);
             String align = print.path("align").asText("CENTER");
-            return new MaskRegions(maskRegion, printRegion, fontName, fontSize, align);
+            int maskPage = root.path("maskPage").asInt(1);
+            int templatePageCount = root.path("templatePageCount").asInt(1);
+            List<CropRegion> cropRegions = new java.util.ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode crop : root.path("crops")) {
+                cropRegions.add(new CropRegion(
+                    crop.path("page").asInt(), crop.path("order").asInt(),
+                    new Region(crop.path("x").asDouble(), crop.path("y").asDouble(),
+                        crop.path("width").asDouble(), crop.path("height").asDouble())));
+            }
+            List<RedactionRegion> redactionRegions = new java.util.ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode redaction : root.path("redactions")) {
+                redactionRegions.add(new RedactionRegion(redaction.path("page").asInt(),
+                    new Region(redaction.path("x").asDouble(), redaction.path("y").asDouble(),
+                        redaction.path("width").asDouble(), redaction.path("height").asDouble())));
+            }
+            return new MaskRegions(maskRegion, printRegion, fontName, fontSize, align, maskPage, templatePageCount,
+                List.copyOf(cropRegions), List.copyOf(redactionRegions));
         } catch (Exception e) {
             throw new IllegalStateException("Invalid mask jsonb for template", e);
         }

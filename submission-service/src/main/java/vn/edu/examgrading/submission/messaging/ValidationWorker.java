@@ -106,7 +106,8 @@ public class ValidationWorker {
         // §8 idempotency: keyed on jobId; skip when this job already succeeded.
         var job = processingJobRepo.findJobById(jobId).orElse(null);
         if (job == null) {
-            log.warn("Validate job {} not found, acking", jobId);
+            log.warn("Validate job {} not visible yet; delaying once", jobId);
+            rabbitTemplate.convertAndSend(RETRY_QUEUES[0], message);
             return;
         }
         if (!job.submissionId().equals(submissionId) || !"VALIDATE".equals(job.step())) {
@@ -293,9 +294,7 @@ public class ValidationWorker {
             AnonymizeJobMessage.SCHEMA_VERSION, anonymizeJobId, submission.submissionId(),
             submission.examId(), submission.templateId(), submission.currentFileVersion(),
             pseudonym, 0, UUID.randomUUID());
-        log.debug("RabbitMQ send: exchange={}, routingKey=anonymize, jobId={}, submissionId={}",
-            EXCHANGE, anonymizeJobId, submission.submissionId());
-        rabbitTemplate.convertAndSend(EXCHANGE, "anonymize", message);
+        new SubmissionOutbox(jdbcTemplate).enqueueAnonymize(message);
     }
 
     private void handleValidationError(UUID submissionId, UUID jobId, ValidationException e, int currentAttempt,
@@ -317,6 +316,7 @@ public class ValidationWorker {
                 // T08: VALIDATING → REVIEW_REQUIRED + Review
                 int movedReview = submissionRepo.transition(submissionId, SubmissionStatus.VALIDATING, SubmissionStatus.REVIEW_REQUIRED, 0);
                 if (movedReview > 0) {
+                    updateFailureCode(submissionId, e.getErrorCode());
                     eventRepo.append(submissionId, SubmissionStatus.REVIEW_REQUIRED, 0);
                 }
                 if (submission != null) {

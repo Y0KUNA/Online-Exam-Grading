@@ -107,7 +107,8 @@ public class AnonymizationWorker {
         // §8 idempotency: keyed on jobId; skip when this job already succeeded.
         var job = processingJobRepo.findJobById(jobId).orElse(null);
         if (job == null) {
-            log.warn("Anonymize job {} not found, acking", jobId);
+            log.warn("Anonymize job {} not visible yet; delaying once", jobId);
+            rabbitTemplate.convertAndSend(RETRY_QUEUES[0], message);
             return;
         }
         if (!job.submissionId().equals(submissionId) || !"ANONYMIZE".equals(job.step())) {

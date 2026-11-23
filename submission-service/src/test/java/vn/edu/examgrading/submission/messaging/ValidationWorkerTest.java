@@ -128,7 +128,7 @@ class ValidationWorkerTest {
         // §8: pseudonym idempotency key is "submissionId:pseudonym"
         verify(identityClient).createPseudonym(eq(examId), eq(submissionId), eq(submissionId + ":pseudonym"));
         verify(processingJobRepo).updateJobStatus(jobId, "SUCCEEDED", 1);
-        verify(rabbitTemplate).convertAndSend(eq("submission.processing"), eq("anonymize"), any(AnonymizeJobMessage.class));
+        verify(jdbcTemplate).update(contains("submission_outbox"), any(), eq("ANONYMIZE"), any());
         verify(jdbcTemplate, atLeastOnce()).update(contains("sha256"), any(), eq(submissionId));
         verify(jdbcTemplate, atLeastOnce()).update(contains("page_count"), eq(2), eq(submissionId));
     }
@@ -186,7 +186,7 @@ class ValidationWorkerTest {
         worker.processValidateJob(message(1, true, 0));
 
         verify(processingJobRepo).updateJobStatus(jobId, "SUCCEEDED", 1);
-        verify(rabbitTemplate).convertAndSend(eq("submission.processing"), eq("anonymize"), any(AnonymizeJobMessage.class));
+        verify(jdbcTemplate).update(contains("submission_outbox"), any(), eq("ANONYMIZE"), any());
     }
 
     @Test

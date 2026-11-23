@@ -38,6 +38,15 @@ public class SubmissionController {
         return ResponseEntity.ok(service.complete(submissionId));
     }
 
+    /** Office retry for a failed/review-required processing run. */
+    @PostMapping("/submissions/{submissionId}/admin/retry-validation")
+    public Map<String, Object> retryValidation(@PathVariable UUID submissionId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        boolean forceTemplateSize = body != null && Boolean.TRUE.equals(body.get("forceTemplateSize"));
+        boolean recoverStalled = body != null && Boolean.TRUE.equals(body.get("recoverStalled"));
+        return service.retryValidation(submissionId, forceTemplateSize, recoverStalled);
+    }
+
     @GetMapping("/exams/{examId}/submissions")
     public List<Map<String, Object>> list(@PathVariable UUID examId) { return service.listForExam(examId); }
 

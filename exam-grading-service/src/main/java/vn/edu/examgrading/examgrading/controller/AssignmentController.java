@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import vn.edu.examgrading.examgrading.dto.BulkAssignmentRequest;
+import vn.edu.examgrading.examgrading.dto.SaveQuestionScoreRequest;
+import vn.edu.examgrading.examgrading.dto.SaveScoresRequest;
 import vn.edu.examgrading.examgrading.service.AssignmentService;
 
 /** APIs for the exam office to distribute work and for graders to open it. */
@@ -30,4 +32,24 @@ public class AssignmentController {
     @PostMapping("/api/v1/grading/assignments/{assignmentId}/attempts")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> start(@PathVariable UUID assignmentId) { return assignments.startAttempt(assignmentId); }
+
+    @GetMapping("/api/v1/grading/attempts/{attemptId}")
+    public Map<String, Object> detail(@PathVariable UUID attemptId) { return assignments.attemptDetail(attemptId); }
+
+    @GetMapping("/api/v1/grading/attempts/{attemptId}/context")
+    public Map<String, Object> context(@PathVariable UUID attemptId) { return assignments.attemptContext(attemptId); }
+
+    @org.springframework.web.bind.annotation.PutMapping("/api/v1/grading/attempts/{attemptId}/scores")
+    public Map<String, Object> saveScores(@PathVariable UUID attemptId, @RequestBody SaveScoresRequest request) {
+        return assignments.saveScores(attemptId, request);
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/api/v1/grading/attempts/{attemptId}/scores/{questionId}")
+    public Map<String, Object> saveQuestionScore(@PathVariable UUID attemptId, @PathVariable UUID questionId,
+            @RequestBody SaveQuestionScoreRequest request) {
+        return assignments.saveQuestionScore(attemptId, questionId, request);
+    }
+
+    @PostMapping("/api/v1/grading/attempts/{attemptId}/confirm")
+    public Map<String, Object> confirm(@PathVariable UUID attemptId) { return assignments.confirmAttempt(attemptId); }
 }

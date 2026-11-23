@@ -34,6 +34,7 @@ import vn.edu.examgrading.submission.storage.ObjectStorageGateway.StoredObject;
 import vn.edu.examgrading.submission.storage.config.StorageProperties;
 import vn.edu.examgrading.submission.client.IdentityClient;
 import vn.edu.examgrading.submission.messaging.ValidationWorker;
+import vn.edu.examgrading.submission.messaging.SubmissionOutbox;
 
 /**
  * JDBC-backed implementation of {@link SubmissionServiceMarker} (TICKET 04).
@@ -58,6 +59,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
     private final Duration uploadTtl;
     private final IdentityClient identityClient;
     private final RabbitTemplate rabbitTemplate;
+    private final SubmissionOutbox outbox;
 
     public SubmissionUploadServiceImpl(
             SubmissionRepositoryMarker submissionRepo,
@@ -70,6 +72,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
             Clock clock,
             IdentityClient identityClient,
             RabbitTemplate rabbitTemplate,
+            SubmissionOutbox outbox,
             @Value("${app.upload.ttl-minutes:10}") long uploadTtlMinutes) {
         this.submissionRepo = submissionRepo;
         this.templateRepo = templateRepo;
@@ -81,6 +84,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         this.clock = clock;
         this.identityClient = identityClient;
         this.rabbitTemplate = rabbitTemplate;
+        this.outbox = outbox;
         this.uploadTtl = Duration.ofMinutes(uploadTtlMinutes);
     }
 
@@ -261,14 +265,72 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
                 ValidationWorker.ValidateJobMessage.SCHEMA_VERSION, jobId, submissionId,
                 submission.examId(), submission.templateId(), submission.currentFileVersion(),
                 false, 0, UUID.randomUUID());
-        log.debug("RabbitMQ send: exchange=submission.processing, routingKey=validate, jobId={}, submissionId={}",
-            jobId, submissionId);
-        rabbitTemplate.convertAndSend("submission.processing", "validate", validateMessage);
+        outbox.enqueueValidate(validateMessage);
 
         // 11. Append event
         eventRepo.append(submissionId, SubmissionStatus.UPLOADED, 0);
         log.debug("Submission queued for validation: submissionId={}, jobId={}, actualBytes={}", submissionId, jobId, actualSize);
 
         return new CompleteSubmissionResponse(submissionId.toString(), SubmissionStatus.UPLOADED.name());
+    }
+
+    /**
+     * Office-controlled recovery for a run which has exhausted automatic retries
+     * or needs an authorised template-size override. The original object is
+     * retained; a missing object is deliberately not retried because the office
+     * must upload a replacement instead.
+     */
+    @Override
+    @Transactional
+    public Map<String, Object> retryValidation(UUID submissionId, boolean forceTemplateSize, boolean recoverStalled) {
+        Submission submission = submissionRepo.findById(submissionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE));
+        if (submission.status() == SubmissionStatus.VALIDATING) {
+            var queued = processingJobRepo.findJobBySubmissionAndStep(submissionId, "VALIDATE")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.INVALID_STATE));
+            if (!"QUEUED".equals(queued.status())) {
+                if (!recoverStalled || "SUCCEEDED".equals(queued.status()) || "COMPLETED".equals(queued.status())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.INVALID_STATE);
+                }
+                processingJobRepo.updateJobStatus(queued.jobId(), "QUEUED", queued.attempt());
+            }
+            ValidationWorker.ValidateJobMessage recovery = new ValidationWorker.ValidateJobMessage(
+                ValidationWorker.ValidateJobMessage.SCHEMA_VERSION, queued.jobId(), submissionId,
+                submission.examId(), queued.templateId(), queued.fileVersion(), queued.force(), 0, UUID.randomUUID());
+            outbox.enqueueValidate(recovery);
+            return Map.of("submissionId", submissionId, "status", SubmissionStatus.VALIDATING.name(),
+                "jobId", queued.jobId(), "recovered", true);
+        }
+        if (submission.status() != SubmissionStatus.FAILED && submission.status() != SubmissionStatus.REVIEW_REQUIRED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.INVALID_STATE);
+        }
+        if (forceTemplateSize && (submission.status() != SubmissionStatus.REVIEW_REQUIRED
+                || !"TEMPLATE_SIZE_MISMATCH".equals(submission.failureCode()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.INVALID_STATE);
+        }
+        if (submission.objectKey() == null || gateway.head(submission.objectKey()).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.UPLOAD_NOT_FOUND);
+        }
+
+        int moved = submissionRepo.transition(submissionId, submission.status(), SubmissionStatus.VALIDATING, 50);
+        if (moved == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, SubmissionError.INVALID_STATE);
+        submissionRepo.clearFailureCode(submissionId);
+        eventRepo.append(submissionId, SubmissionStatus.VALIDATING, 50);
+
+        UUID jobId = UUID.randomUUID();
+        processingJobRepo.insertQueued(jobId, submissionId, "VALIDATE",
+            submission.currentFileVersion(), submission.templateId());
+        ValidationWorker.ValidateJobMessage message = new ValidationWorker.ValidateJobMessage(
+            ValidationWorker.ValidateJobMessage.SCHEMA_VERSION, jobId, submissionId,
+            submission.examId(), submission.templateId(), submission.currentFileVersion(),
+            forceTemplateSize, 0, UUID.randomUUID());
+        outbox.enqueueValidate(message);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("submissionId", submissionId);
+        result.put("status", SubmissionStatus.VALIDATING.name());
+        result.put("jobId", jobId);
+        result.put("forceTemplateSize", forceTemplateSize);
+        return result;
     }
 }

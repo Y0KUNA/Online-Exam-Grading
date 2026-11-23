@@ -4,6 +4,7 @@ import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "./App.css";
 import "./template.css";
 import "./rubric.css";
+import "./grading-workspace.css";
 import { authApi, examApi, gradingApi } from "./api/index.js";
 import Button from "./components/Button";
 import Modal from "./components/Modal";
@@ -21,9 +22,8 @@ const submissionStatusLabel = {
   REVIEW_REQUIRED: 'Cần xử lý',
   COMPLETED: 'Đã chấm',
 };
-const paperRows = (submissions) => submissions.map((submission) => [submission.pseudonym ?? submission.pseudonymValue ?? '—', '—', '—', '—', submission.totalScore?.toFixed?.(2) ?? '—', submissionStatusLabel[submission.status] ?? submission.status ?? 'Chưa chấm']);
+const paperRows = (submissions) => submissions.map((submission) => [submission.pseudonym ?? submission.pseudonymValue ?? '—', submission.totalScore?.toFixed?.(2) ?? '—', submissionStatusLabel[submission.status] ?? submission.status ?? 'Chưa chấm']);
 const reviewRows = (reviews) => reviews.map((review) => [review.pseudonym ?? review.pseudonymValue ?? '—', review.graderOneScore?.toFixed?.(2) ?? '—', review.graderTwoScore?.toFixed?.(2) ?? '—', review.finalScore?.toFixed?.(2) ?? '—', review.reason ?? review.status ?? '—']);
-const rubric = [];
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 function Header({ crumb, title, children }) {
   return (
@@ -266,6 +266,11 @@ function TemplateEditor({ close, onCreated }) {
   const [file, setFile] = useState(null);
   const [step, setStep] = useState("form");
   const [masks, setMasks] = useState([]);
+  const [redactions, setRedactions] = useState([]);
+  const [crops, setCrops] = useState([]);
+  const [tool, setTool] = useState("mask");
+  const [previewPage, setPreviewPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -281,7 +286,8 @@ function TemplateEditor({ close, onCreated }) {
         const data = new Uint8Array(await file.arrayBuffer());
         documentTask = pdfjsLib.getDocument({ data });
         const pdf = await documentTask.promise;
-        const page = await pdf.getPage(1);
+        setPageCount(pdf.numPages);
+        const page = await pdf.getPage(Math.min(previewPage, pdf.numPages));
         const raw = page.getViewport({ scale: 1 });
         const scale = Math.min(1.25, 700 / raw.width);
         const viewport = page.getViewport({ scale });
@@ -294,7 +300,7 @@ function TemplateEditor({ close, onCreated }) {
     };
     render();
     return () => { cancelled = true; documentTask?.destroy(); };
-  }, [step, file]);
+  }, [step, file, previewPage]);
   const startMarking = (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -309,25 +315,35 @@ function TemplateEditor({ close, onCreated }) {
   const beginMask = (event) => {
     if (rendering) return;
     const { x, y } = position(event);
-    const id = crypto.randomUUID(); activeMask.current = { id, startX: x, startY: y };
+    if (tool === "split") {
+      setCrops((current) => [...current.filter((split) => split.page !== previewPage), { id: crypto.randomUUID(), page: previewPage, x }]);
+      return;
+    }
+    const id = crypto.randomUUID(); activeMask.current = { id, startX: x, startY: y, tool };
     event.currentTarget.setPointerCapture(event.pointerId);
-    setMasks((current) => [...current, { id, x, y, width: 0, height: 0 }]);
+    if (tool === "mask") setMasks((current) => [...current, { id, page: previewPage, x, y, width: 0, height: 0 }]);
+    else setRedactions((current) => [...current, { id, page: previewPage, x, y, width: 0, height: 0 }]);
   };
   const resizeMask = (event) => {
     const active = activeMask.current;
     if (!active || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
     const { x, y } = position(event);
-    setMasks((current) => current.map((mask) => mask.id === active.id ? { ...mask, x: Math.min(active.startX, x), y: Math.min(active.startY, y), width: Math.abs(x - active.startX), height: Math.abs(y - active.startY) } : mask));
+    const resize = (region) => region.id === active.id ? { ...region, x: Math.min(active.startX, x), y: Math.min(active.startY, y), width: Math.abs(x - active.startX), height: Math.abs(y - active.startY) } : region;
+    if (active.tool === "mask") setMasks((current) => current.map(resize)); else setRedactions((current) => current.map(resize));
   };
   const save = async () => {
+    if (!crops.length) { setError("Hãy bấm để đặt ít nhất một đường chia trang."); return; }
     if (!masks.length) { setError("Hãy kéo chuột để đánh dấu ít nhất một vùng cần che."); return; }
     setSaving(true); setError("");
     try {
-      await onCreated({ ...draft, pageWidth: 595, pageHeight: 842, masks: masks.map(({ x, y, width, height }) => ({ page: 1, x, y, width, height })) }, file);
+      await onCreated({ ...draft, pageWidth: 595, pageHeight: 842,
+        masks: masks.map(({ page, x, y, width, height }) => ({ page, x, y, width, height })),
+        redactions: redactions.map(({ page, x, y, width, height }) => ({ page, x, y, width, height })),
+        crops: crops.flatMap(({ page, x }) => [{ page, order: page === 1 ? 4 : page * 2 - 2, x: 0, y: 0, width: x, height: 1 }, { page, order: page === 1 ? 1 : page * 2 - 1, x, y: 0, width: 1 - x, height: 1 }]) }, file);
       close();
     } catch (cause) { setError(cause.message || "Không thể lưu mẫu giấy thi."); } finally { setSaving(false); }
   };
-  return <Modal title={step === "form" ? "Thêm mẫu giấy thi" : "Đánh dấu vùng cần che"} close={close}>
+  return <Modal title={step === "form" ? "Thêm mẫu giấy thi" : "Đánh dấu vùng che và vùng cắt"} close={close}>
     {step === "form" ? <form className="form" onSubmit={startMarking}>
       <div className="form-grid">
         <label>Tên mẫu giấy thi *<input name="name" required placeholder="Ví dụ: Tự luận A4 - học kỳ 1" /></label>
@@ -338,13 +354,16 @@ function TemplateEditor({ close, onCreated }) {
       </section>
       {error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={close}>Hủy</Button><Button type="submit">Tiếp tục đánh dấu</Button></div>
     </form> : <div className="template-editor">
-      <p>Kéo chuột trên bản xem trước để khoanh các khu vực chứa thông tin cần ẩn. Vùng đỏ sẽ được che khi xử lý bài thi; mã phách được in tự động ở giữa vùng che.</p>
+      <div className="actions"><Button type="button" className={tool === "mask" ? "" : "secondary"} onClick={() => setTool("mask")}>Che và in số phách</Button><Button type="button" className={tool === "redact" ? "" : "secondary"} onClick={() => setTool("redact")}>Che thường</Button><Button type="button" className={tool === "split" ? "" : "secondary"} onClick={() => setTool("split")}>Đường chia trang</Button>{pageCount > 1 && <><Button type="button" className="secondary" disabled={previewPage === 1} onClick={() => setPreviewPage((page) => page - 1)}>← Mặt trước</Button><span>Mặt {previewPage}/{pageCount}</span><Button type="button" className="secondary" disabled={previewPage === pageCount} onClick={() => setPreviewPage((page) => page + 1)}>Mặt sau →</Button></>}</div>
+      <p>{tool === "mask" ? "Khoanh vùng thông tin cá nhân để che và in số phách." : tool === "redact" ? "Khoanh vùng cần che trắng, không in số phách." : "Bấm vào vị trí cần chia dọc. Mỗi mặt chỉ có một đường chia."}</p>
       <div className="pdf-preview" onPointerDown={beginMask} onPointerMove={resizeMask} onPointerUp={(event) => { activeMask.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId); }}>
         <canvas ref={canvasRef} aria-label="Trang đầu PDF mẫu" />
         {rendering && <span className="pdf-rendering">Đang dựng trang PDF…</span>}
-        {masks.map((mask) => <span key={mask.id} className="mask-region" style={{ left: `${mask.x * 100}%`, top: `${mask.y * 100}%`, width: `${mask.width * 100}%`, height: `${mask.height * 100}%` }} />)}
+        {masks.filter((mask) => mask.page === previewPage).map((mask) => <span key={mask.id} className="mask-region" style={{ left: `${mask.x * 100}%`, top: `${mask.y * 100}%`, width: `${mask.width * 100}%`, height: `${mask.height * 100}%` }} />)}
+        {redactions.filter((redaction) => redaction.page === previewPage).map((redaction) => <span key={redaction.id} className="mask-region" style={{ left: `${redaction.x * 100}%`, top: `${redaction.y * 100}%`, width: `${redaction.width * 100}%`, height: `${redaction.height * 100}%` }} />)}
+        {crops.filter((split) => split.page === previewPage).map((split) => <span key={split.id} className="mask-region" style={{ left: `${split.x * 100}%`, top: "0", width: "0", height: "100%" }} />)}
       </div>
-      <div className="mask-list"><b>{masks.length} vùng cần che</b>{masks.map((mask, index) => <button type="button" key={mask.id} onClick={() => setMasks((current) => current.filter((item) => item.id !== mask.id))}>Xóa vùng {index + 1}</button>)}</div>
+      <div className="mask-list"><b>{tool === "mask" ? `${masks.length} vùng che và in số phách` : tool === "redact" ? `${redactions.length} vùng che thường` : `${crops.length} đường chia`}</b>{tool === "mask" ? masks.map((mask, index) => <button type="button" key={mask.id} onClick={() => setMasks((current) => current.filter((item) => item.id !== mask.id))}>Xóa vùng {index + 1}</button>) : tool === "redact" ? redactions.map((redaction, index) => <button type="button" key={redaction.id} onClick={() => setRedactions((current) => current.filter((item) => item.id !== redaction.id))}>Xóa vùng {index + 1}</button>) : crops.map((split) => <button type="button" key={split.id} onClick={() => setCrops((current) => current.filter((item) => item.id !== split.id))}>Xóa đường chia mặt {split.page}</button>)}</div>
       {error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={() => setStep("form")}>← Quay lại</Button><Button onClick={save} disabled={saving}>{saving ? "Đang tải lên…" : "Lưu và tải lên backend"}</Button></div>
     </div>}
   </Modal>;
@@ -378,6 +397,7 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision, 
   const [assigning, setAssigning] = useState(false);
   const [uploadedCandidates, setUploadedCandidates] = useState({});
   const [uploadingCandidateId, setUploadingCandidateId] = useState(null);
+  const [retryingSubmissionId, setRetryingSubmissionId] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [bindings, setBindings] = useState([]);
   const [candidateError, setCandidateError] = useState("");
@@ -456,7 +476,12 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision, 
             issueAt={5}
             action={(row) => {
               const candidate = candidates.find((item) => item.candidateNumber === row[2]);
+              const binding = candidate ? bindings.find((item) => item.candidateId === candidate.candidateId) : null;
+              const submission = binding ? submissions.find((item) => item.submissionId === binding.submissionId) : null;
               const isUploading = uploadingCandidateId && uploadingCandidateId === candidate?.candidateId;
+              const canRetry = submission && ["FAILED", "REVIEW_REQUIRED", "VALIDATING"].includes(submission.status);
+
+              if (canRetry) return <div className="actions"><Button disabled={retryingSubmissionId === submission.submissionId} onClick={async () => { if (submission.status === "VALIDATING" && !window.confirm("Chỉ dùng khi job đã treo. Hệ thống sẽ gửi lại job validate hiện có. Tiếp tục?")) return; setRetryingSubmissionId(submission.submissionId); try { await examApi.retrySubmissionValidation(submission.submissionId, { recoverStalled: submission.status === "VALIDATING" }); setCandidateError(""); refresh(); } catch (cause) { setCandidateError(cause.message || "Không thể thử lại xử lý bài thi."); } finally { setRetryingSubmissionId(null); } }}>{retryingSubmissionId === submission.submissionId ? "Đang thử lại…" : submission.status === "VALIDATING" ? "Khôi phục job" : "Thử lại"}</Button>{submission.status === "REVIEW_REQUIRED" && <Button className="secondary" disabled={retryingSubmissionId === submission.submissionId} onClick={async () => { if (!window.confirm("Chỉ dùng khi phòng khảo thí xác nhận bài đúng mẫu nhưng kích thước scan lệch. Tiếp tục?")) return; setRetryingSubmissionId(submission.submissionId); try { await examApi.retrySubmissionValidation(submission.submissionId, { forceTemplateSize: true }); setCandidateError(""); refresh(); } catch (cause) { setCandidateError(cause.message || "Không thể thử lại có ngoại lệ."); } finally { setRetryingSubmissionId(null); } }}>Bỏ qua lệch mẫu</Button>}</div>;
 
               return (
                 <label className="upload-btn">
@@ -502,47 +527,6 @@ function OfficeExam({ exam, back, finalize, exportResults, configure, revision, 
   );
 }
 function Finalize({ back }) {
-  const rows = [
-    [
-      "P-9K4M",
-      "Nguyễn Minh An",
-      "1.50",
-      "1.50",
-      "3.25",
-      "3.50",
-      "3.75",
-      "3.75",
-      "8.50",
-      "8.75",
-      "Đã đối soát",
-    ],
-    [
-      "P-7R1X",
-      "Lê Khánh Linh",
-      "1.50",
-      "2.00",
-      "3.00",
-      "3.50",
-      "2.50",
-      "3.50",
-      "7.00",
-      "9.00",
-      "Cần xử lý",
-    ],
-    [
-      "P-5D6N",
-      "Hoàng Quốc Việt",
-      "1.50",
-      "1.50",
-      "3.25",
-      "3.00",
-      "3.00",
-      "3.00",
-      "7.75",
-      "7.50",
-      "Đã đối soát",
-    ],
-  ];
   return (
     <>
       <Header
@@ -551,9 +535,6 @@ function Finalize({ back }) {
       >
         <Button className="secondary" onClick={back}>
           ← Quay lại kỳ thi
-        </Button>
-        <Button onClick={() => alert("Điểm đã được chốt trong bản demo.")}>
-          Xác nhận chốt điểm
         </Button>
       </Header>
       <main className="content">
@@ -567,46 +548,18 @@ function Finalize({ back }) {
             </p>
           </div>
         </div>
-        <section className="table-box">
-          <div className="section-head">
-            <div>
-              <h2>Bảng điểm theo câu</h2>
-              <p>
-                Hiển thị đồng thời điểm của hai giám khảo vì kỳ thi có cấu hình
-                chấm chéo.
-              </p>
-            </div>
-            <span className="badge">02 giám khảo độc lập</span>
-          </div>
-          <Table
-            headers={[
-              "Số phách",
-              "Thí sinh",
-              "C1 GK1",
-              "C1 GK2",
-              "C2 GK1",
-              "C2 GK2",
-              "C3 GK1",
-              "C3 GK2",
-              "Tổng GK1",
-              "Tổng GK2",
-              "Trạng thái",
-            ]}
-            rows={rows}
-            statusAt={10}
-          />
-        </section>
+        <section className="table-box"><h2>Chưa có dữ liệu tổng hợp</h2><p>Dữ liệu chốt điểm sẽ chỉ hiển thị sau khi API tổng hợp kết quả được triển khai.</p></section>
       </main>
     </>
   );
 }
-function GraderHome({ exam, submissions, open }) {
+function GraderHome({ exam, submissions, open, user }) {
   const assignedCount = paperRows(submissions).length;
   return (
     <>
       <Header crumb="GIÁM KHẢO · BÀI ĐƯỢC PHÂN CÔNG" title="Kỳ thi cần chấm">
         <span className="user">
-          Lê Hoàng
+          {user?.fullName ?? "Giám khảo"}
           <br />
           <small>Giám khảo</small>
         </span>
@@ -614,7 +567,7 @@ function GraderHome({ exam, submissions, open }) {
       <main className="content">
         <div className="welcome">
           <div>
-            <h2>Chào giám khảo Lê Hoàng</h2>
+            <h2>Chào giám khảo {user?.fullName ?? ""}</h2>
             <p>
               Bạn có <b>{assignedCount} bài làm</b> được phân công trong kỳ thi này.
             </p>
@@ -672,18 +625,15 @@ function PaperList({ exam, submissions, back, grade }) {
           <Table
             headers={[
               "Số phách",
-              "Câu 1 / 2đ",
-              "Câu 2 / 4đ",
-              "Câu 3 / 4đ",
               "Tổng",
               "Trạng thái",
               "",
             ]}
             rows={papers}
-            statusAt={5}
-            action={(r) => (
-              <Button className="link" onClick={grade}>
-                {r[5] === "Đã chấm" ? "Xem lượt chấm" : "Bắt đầu chấm →"}
+            statusAt={2}
+            action={(r, index) => (
+              <Button className="link" onClick={() => grade(submissions[index])}>
+                {r[2] === "Đã chấm" ? "Xem lượt chấm" : "Bắt đầu chấm →"}
               </Button>
             )}
           />
@@ -692,68 +642,74 @@ function PaperList({ exam, submissions, back, grade }) {
     </>
   );
 }
-function Scan() {
-  return (
-    <div className="scan">
-      <div>
-        ‹　<strong>Trang 2 / 4</strong>　›　　−　100%　+
-      </div>
-      <article>
-        <span>PHÁCH: P-9K4M</span>
-        <h3>BÀI THI TỰ LUẬN</h3>
-        <p>
-          <b>Câu 2.</b> Phân tích tác động của chuyển đổi số đến năng lực cạnh
-          tranh của doanh nghiệp Việt Nam.
-        </p>
-        <p>
-          Trong bối cảnh kinh tế số phát triển nhanh, chuyển đổi số không chỉ là
-          ứng dụng công nghệ mà còn là quá trình thay đổi mô hình vận hành của
-          doanh nghiệp...
-        </p>
-        <p>
-          Dữ liệu giúp doanh nghiệp hiểu khách hàng và tự động hóa quy trình, từ
-          đó giảm chi phí vận hành và cải thiện chất lượng dịch vụ.
-        </p>
-        <em>
-          Doanh nghiệp cần đầu tư vào năng lực số, quản trị dữ liệu và đào tạo
-          nhân sự để tạo lợi thế bền vững.
-        </em>
-      </article>
-    </div>
-  );
+function Scan({ pseudonym, url }) {
+  return <div className="scan"><div><strong>PHÁCH: {pseudonym}</strong></div>{url ? <iframe title={`Bài làm ${pseudonym}`} src={url} className="scan-pdf" /> : <article><h3>Không có bản bài làm</h3><p>Không thể lấy URL bản ẩn danh từ máy chủ.</p></article>}</div>;
 }
-function Grading({ back, council = false }) {
-  const [scores, setScores] = useState([1.25, 0.5, 2.5, 1.5]);
-  const [report, setReport] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const total = scores.reduce((a, b) => a + Number(b || 0), 0);
+function Grading({ back, assignment, onCompleted }) {
+  const [attemptId, setAttemptId] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [fileUrl, setFileUrl] = useState("");
+  const [scores, setScores] = useState({});
+  const [status, setStatus] = useState("loading");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!assignment?.assignmentId) return undefined;
+    const aborter = new AbortController();
+    setStatus("loading"); setError("");
+    gradingApi.startAttempt(assignment.assignmentId, { signal: aborter.signal }).then(async (attempt) => {
+      const [detail, context] = await Promise.all([
+        gradingApi.getAttempt(attempt.attemptId, { signal: aborter.signal }),
+        gradingApi.getAttemptContext(attempt.attemptId, { signal: aborter.signal }),
+      ]);
+      if (aborter.signal.aborted) return;
+      setAttemptId(attempt.attemptId);
+      setQuestions(context.questions ?? []);
+      setFileUrl(context.anonymizedFileAccessUrl ?? "");
+      setScores(Object.fromEntries((detail.scores ?? []).map((item) => [item.questionId, item.score])));
+      setStatus(detail.attempt?.status ?? attempt.status);
+    }).catch((cause) => {
+      if (cause.name !== "AbortError") setError(cause.message || "Không thể tải lượt chấm.");
+    });
+    return () => aborter.abort();
+  }, [assignment?.assignmentId, assignment?.examId]);
+  const total = questions.reduce((sum, question) => sum + Number(scores[question.questionId] ?? 0), 0);
+  const maximum = questions.reduce((sum, question) => sum + Number(question.maxScore ?? 0), 0);
+  const save = async (confirm) => {
+    if (!attemptId || status === "CONFIRMED") return;
+    setSaving(true); setError("");
+    try {
+      await gradingApi.saveScores(attemptId, questions.map((question) => ({
+        questionId: question.questionId,
+        score: scores[question.questionId] === undefined || scores[question.questionId] === "" ? null : Number(scores[question.questionId]),
+        needsReview: false,
+      })));
+      if (confirm) {
+        const result = await gradingApi.confirmAttempt(attemptId);
+        setStatus(result.status);
+        onCompleted?.();
+      }
+    } catch (cause) { setError(cause.message || "Không thể lưu điểm."); }
+    finally { setSaving(false); }
+  };
+  if (!assignment) return <main className="content"><p className="empty-state">Chưa chọn bài làm để chấm.</p></main>;
   return (
     <>
       <Header
-        crumb={council ? "HỘI ĐỒNG / XỬ LÝ BÀI THI" : "GIÁM KHẢO / CHẤM BÀI"}
-        title={`${council ? "Đánh giá & quyết định" : "Chấm bài"} · P-9K4M`}
+        crumb="GIÁM KHẢO / CHẤM BÀI"
+        title={`Chấm bài · ${assignment.pseudonym ?? assignment.submissionId}`}
       >
         <Button className="secondary" onClick={back}>
           ← Quay lại
         </Button>
-        {!council && (
-          <Button className="danger" onClick={() => setReport(true)}>
-            ⚑ Báo cáo vấn đề
-          </Button>
-        )}
-        <Button onClick={() => setSaved(true)}>
-          {council ? "Chốt điểm bài làm" : "Hoàn thành lượt chấm"}
+        <Button className="secondary" disabled={saving || status === "CONFIRMED"} onClick={() => save(false)}>Lưu nháp</Button>
+        <Button disabled={saving || status === "CONFIRMED"} onClick={() => save(true)}>
+          {saving ? "Đang lưu…" : status === "CONFIRMED" ? "Đã hoàn thành" : "Hoàn thành lượt chấm"}
         </Button>
       </Header>
       <main className="content grading">
-        {saved && (
-          <div className="success">
-            ✓{" "}
-            {council
-              ? "Đã lưu điểm chốt của Hội đồng."
-              : "Đã hoàn thành lượt chấm P-9K4M."}
-          </div>
-        )}
+        {status === "CONFIRMED" && <div className="success">✓ Đã hoàn thành lượt chấm.</div>}
+        {error && <div className="form-error">{error}</div>}
         <div className="grading-grid">
           <section>
             <div className="panel-head">
@@ -761,133 +717,59 @@ function Grading({ back, council = false }) {
                 <h3>Bài làm đã ẩn danh</h3>
                 <p>Chỉ hiển thị số phách, không hiển thị thông tin thí sinh.</p>
               </div>
-              <Status>Đang chấm</Status>
+              <Status>{status === "CONFIRMED" ? "Đã chấm" : "Đang chấm"}</Status>
             </div>
-            <Scan />
+            <Scan pseudonym={assignment.pseudonym ?? assignment.submissionId} url={fileUrl} />
           </section>
           <section>
             <div className="panel-head">
               <div>
                 <h3>
-                  {council ? "Kết quả chấm & điểm chốt" : "Hướng dẫn chấm"}
+                  Hướng dẫn chấm
                 </h3>
                 <p>
-                  Ma trận tiêu chí và mức độ đạt được theo rubric của kỳ thi.
+                  Điểm từng câu được tải từ cấu hình kỳ thi và lưu trực tiếp vào lượt chấm.
                 </p>
               </div>
               <strong className="total">
                 {total.toFixed(2)}
-                <small>/10</small>
+                <small>/{maximum.toFixed(2)}</small>
               </strong>
             </div>
-            {council && (
-              <div className="compare">
-                <div>
-                  Giám khảo 1<b>7.00</b>
-                </div>
-                <div>
-                  Giám khảo 2<b>9.00</b>
-                </div>
-                <div>
-                  Chênh lệch<b>2.00</b>
-                </div>
-              </div>
-            )}
-            <div className="rubric-scroll">
-              <table className="rubric-matrix">
+            <div className="rubric-scroll"><table className="rubric-matrix">
                 <thead>
                   <tr>
                     <th>Câu</th>
                     <th>Điểm</th>
-                    <th>Tiêu chí</th>
-                    <th>Thành phần nội dung</th>
-                    <th>Mức 4</th>
-                    <th>Mức 3</th>
-                    <th>Mức 2</th>
-                    <th>Mức 1</th>
+                    <th>Nội dung</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {rubric.map((item, i) => (
-                    <tr key={`${item.question}-${item.detail}`}>
+                <tbody>{questions.map((question) => (
+                    <tr key={question.questionId}>
                       <td>
-                        <b>{item.question}</b>
-                        <small>/ {item.points}đ</small>
+                        <b>Câu {question.orderNo}</b><small>/ {question.maxScore}đ</small>
                       </td>
                       <td>
                         <input
-                          aria-label={`Điểm ${item.detail}`}
+                          aria-label={`Điểm câu ${question.orderNo}`}
                           type="number"
                           min="0"
-                          max={item.points}
+                          max={question.maxScore}
                           step=".25"
-                          value={scores[i]}
-                          onChange={(e) =>
-                            setScores(
-                              scores.map((x, k) =>
-                                k === i ? e.target.value : x,
-                              ),
-                            )
-                          }
+                          disabled={status === "CONFIRMED"}
+                          value={scores[question.questionId] ?? ""}
+                          onChange={(e) => setScores((current) => ({ ...current, [question.questionId]: e.target.value }))}
                         />
-                        <small>/ {item.points}</small>
+                        <small>/ {question.maxScore}</small>
                       </td>
-                      <td>
-                        <b>{item.criterion}</b>
-                      </td>
-                      <td>{item.detail}</td>
-                      {item.scores.map((text, index) => (
-                        <td key={text}>
-                          <b>{["Xuất sắc", "Tốt", "Đạt", "Chưa đạt"][index]}</b>
-                          <span>{text}</span>
-                        </td>
-                      ))}
+                      <td>{question.content}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <label className="feedback">
-              {council ? "Căn cứ quyết định điểm chốt *" : "Nhận xét chấm"}
-              <textarea
-                defaultValue={
-                  council
-                    ? "Đối chiếu bài làm và rubric, Hội đồng thống nhất điều chỉnh điểm câu 3."
-                    : "Lập luận rõ ràng; cần liên hệ thêm ví dụ thực tế ở câu 3."
-                }
-              />
-            </label>
-            <p className="protect">
-              ◉{" "}
-              {council
-                ? "Điểm chốt sẽ được ghi nhận là kết quả cuối cùng."
-                : "Điểm và nhận xét của giám khảo khác được ẩn đến khi bạn hoàn thành."}
-            </p>
+                  ))}</tbody></table></div>
+            {!questions.length && !error && <p className="empty-state">Đang tải câu hỏi của kỳ thi…</p>}
+            <p className="protect">◉ Điểm của giám khảo khác được ẩn đến khi bạn hoàn thành.</p>
           </section>
         </div>
       </main>
-      {report && (
-        <Modal title="Báo cáo vấn đề" close={() => setReport(false)}>
-          <div className="report">
-            <p>
-              Gửi báo cáo đến Phòng khảo thí và Hội đồng chấm thi để được xử lý.
-            </p>
-            <label>
-              Nội dung vấn đề *
-              <textarea
-                autoFocus
-                placeholder="Mô tả vấn đề phát hiện trong bài làm..."
-              />
-            </label>
-            <div className="actions">
-              <Button className="secondary" onClick={() => setReport(false)}>
-                Hủy
-              </Button>
-              <Button onClick={() => setReport(false)}>Báo cáo vấn đề</Button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </>
   );
 }
@@ -978,6 +860,8 @@ function CouncilExam({ exam, reviews, back, grade }) {
 export default function AppView() {
   const workspace = useExamWorkspace();
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [gradingAssignment, setGradingAssignment] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     authToken, authReady, role, page, creating, configuring, selectedExamId, exams, selectedExam,
     submissions, reviews, templates, apiError, loading, revision, user,
@@ -1007,14 +891,14 @@ export default function AppView() {
       />
     ) : role === "grader" ? (
       <GraderPage page={page}
-        home={<GraderHome exam={selectedExam} submissions={submissions} open={() => setPage("papers")} />}
+        home={<GraderHome exam={selectedExam} submissions={submissions} user={user} open={() => setPage("papers")} />}
         papers={<PaperList
           exam={selectedExam}
           submissions={submissions}
           back={() => setPage("home")}
-          grade={() => setPage("grade")}
+          grade={(assignment) => { setGradingAssignment(assignment); setPage("grade"); }}
         />}
-        grading={<Grading back={() => setPage("papers")} />}
+        grading={<Grading assignment={gradingAssignment} back={() => setPage("papers")} onCompleted={refreshExam} />}
       />
     ) : (
       <CouncilPage page={page}
@@ -1025,14 +909,17 @@ export default function AppView() {
         back={() => setPage("home")}
         grade={() => setPage("grade")}
         />}
-        grading={<Grading council back={() => setPage("exam")} />}
+        grading={<Grading back={() => setPage("exam")} />}
       />
     );
   if (!authReady) return <div className="api-state">Đang xác thực phiên đăng nhập…</div>;
   if (!authToken || !role) return <Login onLogin={login} onRegister={registerGrader} />;
   return (
-    <div className="app">
+    <div className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside>
+        <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} title={sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}>
+          {sidebarCollapsed ? "›" : "‹"}
+        </button>
         <div className="brand">
           <b>EG</b>
           <div>

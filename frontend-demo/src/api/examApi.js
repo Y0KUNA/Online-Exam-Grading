@@ -4,6 +4,7 @@ export const DEFAULT_PAPER_TEMPLATE_ID = "0a809b8a-4b10-4b64-9305-000000000001";
 
 export const examApi = {
   listExams: (options) => request("/api/v1/exams", options),
+  listQuestions: (examId, options) => request(`/api/v1/exams/${examId}/questions`, options),
   createExam: (exam, options) => request("/api/v1/exams", { ...options, method: "POST", body: exam }),
   setTemplate: (examId, templateId, options) => request(`/api/v1/exams/${examId}/template`, { ...options, method: "PUT", body: { templateId } }),
   addQuestion: (examId, question, options) => request(`/api/v1/exams/${examId}/questions`, { ...options, method: "POST", body: question }),
@@ -61,6 +62,10 @@ export const examApi = {
       body: {},
     });
   },
+  retrySubmissionValidation: (submissionId, { forceTemplateSize = false, recoverStalled = false, ...options } = {}) => request(
+    `/api/v1/submissions/${submissionId}/admin/retry-validation`,
+    { ...options, method: "POST", body: { forceTemplateSize, recoverStalled } },
+  ),
   listCandidates: (examId, options) => request(`/api/v1/exams/${examId}/candidates`, options),
   listSubmissionBindings: (examId, options) => request(`/api/v1/exams/${examId}/submission-bindings`, options),
   exportResults: async (examId, options = {}) => {

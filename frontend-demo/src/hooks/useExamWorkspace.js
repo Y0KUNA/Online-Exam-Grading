@@ -16,6 +16,15 @@ const getTokenRole = (token) => JSON.parse(
 
 const toItems = (payload) => Array.isArray(payload) ? payload : payload?.items ?? payload?.content ?? [];
 
+// The grading endpoint returns only anonymized assignment data. Keep the shape used
+// by the existing paper list, without falling back to the office-only submission API.
+const toAssignedPapers = (items) => items.map((item) => ({
+  ...item,
+  submissionId: item.submissionId,
+  pseudonym: item.pseudonym ?? item.submissionId,
+  totalScore: item.totalScore,
+}));
+
 export default function useExamWorkspace() {
   const [authToken, setAuthToken] = useState(() => sessionStorage.getItem(TOKEN_KEY));
   const [role, setRole] = useState(() => {
@@ -57,28 +66,47 @@ export default function useExamWorkspace() {
 
   useEffect(() => {
     if (!authToken || !authReady) { setLoading(false); return undefined; }
+    if (role === "grader" && !user?.userId) return undefined;
     const aborter = new AbortController();
-    examApi.listExams({ signal: aborter.signal })
-      .then(async (payload) => {
-        const enriched = await Promise.all(toItems(payload).map(async (exam) => {
-          const calls = [gradingApi.listSubmissions(exam.examId), reviewApi.listReviews(exam.examId)];
-          if (role === "office") calls.unshift(examApi.listCandidates(exam.examId));
-          const results = await Promise.all(calls);
-          const candidates = role === "office" ? toItems(results[0]) : null;
-          const submissionItems = toItems(results[role === "office" ? 1 : 0]);
-          const reviewItems = toItems(results[role === "office" ? 2 : 1]);
+    const load = async () => {
+      const payload = await examApi.listExams({ signal: aborter.signal });
+      const examList = toItems(payload);
+      if (role === "grader") {
+        const assignedPapers = toAssignedPapers(toItems(await gradingApi.listAssignments(user.userId, { signal: aborter.signal })));
+        const enriched = examList.map((exam) => {
+          const papers = assignedPapers.filter((paper) => paper.examId === exam.examId);
           return {
             ...exam,
-            candidateCount: candidates?.length ?? exam.candidateCount ?? 0,
-            submittedCount: submissionItems.length,
-            gradedCount: submissionItems.filter((item) => item.status === "COMPLETED").length,
-            reviewCount: reviewItems.filter((item) => item.status !== "RESOLVED").length,
+            submittedCount: papers.length,
+            gradedCount: papers.filter((paper) => paper.status === "COMPLETED").length,
+            reviewCount: 0,
           };
-        }));
+        }).filter((exam) => exam.submittedCount > 0);
         setExamItems(enriched);
         setSelectedExamId((current) => current ?? enriched[0]?.examId ?? null);
         setApiError("");
-      })
+        return;
+      }
+      const enriched = await Promise.all(examList.map(async (exam) => {
+        const calls = [gradingApi.listSubmissions(exam.examId), reviewApi.listReviews(exam.examId)];
+        if (role === "office") calls.unshift(examApi.listCandidates(exam.examId));
+        const results = await Promise.all(calls);
+        const candidates = role === "office" ? toItems(results[0]) : null;
+        const submissionItems = toItems(results[role === "office" ? 1 : 0]);
+        const reviewItems = toItems(results[role === "office" ? 2 : 1]);
+        return {
+          ...exam,
+          candidateCount: candidates?.length ?? exam.candidateCount ?? 0,
+          submittedCount: submissionItems.length,
+          gradedCount: submissionItems.filter((item) => item.status === "COMPLETED").length,
+          reviewCount: reviewItems.filter((item) => item.status !== "RESOLVED").length,
+        };
+      }));
+      setExamItems(enriched);
+      setSelectedExamId((current) => current ?? enriched[0]?.examId ?? null);
+      setApiError("");
+    };
+    load()
       .catch((cause) => {
         if (cause.name !== "AbortError") {
           setExamItems([]);
@@ -87,7 +115,7 @@ export default function useExamWorkspace() {
       })
       .finally(() => { if (!aborter.signal.aborted) setLoading(false); });
     return () => aborter.abort();
-  }, [authToken, role, authReady]);
+  }, [authToken, role, authReady, user?.userId]);
 
   useEffect(() => {
     if (!authToken || role !== "office") { setTemplates([]); return undefined; }
@@ -99,8 +127,20 @@ export default function useExamWorkspace() {
   }, [authToken, role, revision]);
 
   useEffect(() => {
-    if (!selectedExamId) return undefined;
+    if (!selectedExamId || (role === "grader" && !user?.userId)) return undefined;
     const aborter = new AbortController();
+    if (role === "grader") {
+      gradingApi.listAssignments(user.userId, { signal: aborter.signal })
+        .then((payload) => {
+          const assignedPapers = toAssignedPapers(toItems(payload));
+          setSubmissions(assignedPapers.filter((paper) => paper.examId === selectedExamId));
+          setReviews([]);
+        })
+        .catch((cause) => {
+          if (cause.name !== "AbortError") setApiError("Không thể tải danh sách bài được phân công.");
+        });
+      return () => aborter.abort();
+    }
     Promise.all([
       gradingApi.listSubmissions(selectedExamId, { signal: aborter.signal }),
       reviewApi.listReviews(selectedExamId, { signal: aborter.signal }),
@@ -113,7 +153,7 @@ export default function useExamWorkspace() {
         if (cause.name !== "AbortError") setApiError("Một số dữ liệu chi tiết chưa tải được từ API.");
       });
     return () => aborter.abort();
-  }, [selectedExamId, revision]);
+  }, [selectedExamId, revision, role, user?.userId]);
 
   const login = async (credentials) => {
     const response = await authApi.login(credentials);

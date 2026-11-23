@@ -29,6 +29,11 @@ public class InMemoryObjectStorage implements ObjectStorageGateway {
     }
 
     @Override
+    public String presignGet(String bucket, String objectKey, Duration ttl) {
+        return "http://memory.test/" + bucket + "/" + objectKey + "?X-Amz-Signature=in-memory-signature";
+    }
+
+    @Override
     public void put(String objectKey, byte[] content, String contentType) {
         objects.put(scopedKey(null, objectKey), content.clone());
     }

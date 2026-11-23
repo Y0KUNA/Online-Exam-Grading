@@ -54,6 +54,11 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
     }
 
     @Override
+    public int clearFailureCode(UUID submissionId) {
+        return jdbcTemplate.update("UPDATE submission SET failure_code = NULL, updated_at = now() WHERE submission_id = ?", submissionId);
+    }
+
+    @Override
     public void deleteById(UUID submissionId) {
         String sql = "DELETE FROM submission WHERE submission_id = ?";
         jdbcTemplate.update(sql, submissionId);

@@ -14,8 +14,11 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.MaskRegions;
+import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CropRegion;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.Region;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -163,6 +166,39 @@ class PageMaskerTest {
     }
 
     @Test
+    void landscapeSheetSidesAreSplitInReadingOrder() throws Exception {
+        Region detachableStrip = new Region(0.9, 0, 0.1, 1);
+        MaskRegions layout = new MaskRegions(detachableStrip,
+            new Region(0.91, 0.1, 0.08, 0.1), "Helvetica-Bold", 14.0, "CENTER", 1,
+            List.of(
+                new CropRegion(1, 4, new Region(0, 0, 0.5, 1)),
+                new CropRegion(1, 1, new Region(0.5, 0, 0.5, 1)),
+                new CropRegion(2, 2, new Region(0, 0, 0.5, 1)),
+                new CropRegion(2, 3, new Region(0.5, 0, 0.5, 1))));
+        byte[] out = masker.anonymize(twoLandscapeSides(), layout, "PH-001");
+
+        try (PDDocument doc = PDDocument.load(new ByteArrayInputStream(out))) {
+            // Two scanned sides (two physical sheets in this fixture), each with
+            // left and right logical pages, become four grader-facing pages.
+            assertEquals(4, doc.getNumberOfPages());
+            for (int i = 0; i < doc.getNumberOfPages(); i++) {
+                PDRectangle box = doc.getPage(i).getMediaBox();
+                assertTrue(box.getHeight() > box.getWidth(),
+                    "split output page " + (i + 1) + " must be portrait");
+                assertTrue(doc.getPage(i).getAnnotations() == null
+                    || doc.getPage(i).getAnnotations().isEmpty());
+            }
+            PDFRenderer renderer = new PDFRenderer(doc);
+            assertPageColour(renderer, 0, Color.BLUE);   // front-right: page 1
+            assertPageColour(renderer, 1, Color.GREEN);  // back-left: page 2
+            assertPageColour(renderer, 2, Color.YELLOW); // back-right: page 3
+            assertPageColour(renderer, 3, Color.RED);    // front-left: page 4
+            assertTrue(doc.getPage(0).getMediaBox().getWidth() < doc.getPage(1).getMediaBox().getWidth(),
+                "the detachable identity strip must be removed from page 1, not painted white");
+        }
+    }
+
+    @Test
     void printRegionOutsideMask_isRejected() {
         MaskRegions bad = new MaskRegions(MASK,
             new Region(0.8, 0.8, 0.2, 0.2), "Helvetica", 12, "CENTER");
@@ -202,5 +238,38 @@ class PageMaskerTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private static byte[] twoLandscapeSides() throws Exception {
+        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            for (int i = 0; i < 2; i++) {
+                PDPage spread = new PDPage(new PDRectangle(1200, 842));
+                doc.addPage(spread);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, spread)) {
+                    cs.setNonStrokingColor(i == 0 ? Color.RED : Color.GREEN);
+                    cs.addRect(0, 0, 600, 842);
+                    cs.fill();
+                    cs.setNonStrokingColor(i == 0 ? Color.BLUE : Color.YELLOW);
+                    cs.addRect(600, 0, 600, 842);
+                    cs.fill();
+                    cs.beginText();
+                    cs.setFont(PDType1Font.HELVETICA, 12);
+                    cs.newLineAtOffset(40, 200);
+                    cs.showText("left logical page " + (i + 1));
+                    cs.newLineAtOffset(320, 200);
+                    cs.showText("right logical page " + (i + 1));
+                    cs.endText();
+                }
+            }
+            doc.save(out);
+            return out.toByteArray();
+        }
+    }
+
+    private static void assertPageColour(PDFRenderer renderer, int pageIndex, Color expected)
+            throws Exception {
+        BufferedImage image = renderer.renderImageWithDPI(pageIndex, 72, ImageType.RGB);
+        assertEquals(expected.getRGB() & 0xFFFFFF, image.getRGB(10, 10) & 0xFFFFFF,
+            "unexpected logical page at output index " + pageIndex);
     }
 }

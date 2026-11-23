@@ -26,6 +26,7 @@ import vn.edu.examgrading.submission.dto.CompleteSubmissionResponse;
 import vn.edu.examgrading.submission.dto.InitSubmissionRequest;
 import vn.edu.examgrading.submission.dto.InitSubmissionResponse;
 import vn.edu.examgrading.submission.messaging.ValidationWorker;
+import vn.edu.examgrading.submission.messaging.SubmissionOutbox;
 import vn.edu.examgrading.submission.repository.ExamFileRepository;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository;
 import vn.edu.examgrading.submission.repository.ProcessingJobRepository;
@@ -71,6 +72,9 @@ class SubmissionUploadServiceImplTest {
     @Mock
     private org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
 
+    @Mock
+    private SubmissionOutbox outbox;
+
     private ObjectStorageGateway gateway;
     private StorageProperties props;
     private Clock clock;
@@ -99,7 +103,7 @@ class SubmissionUploadServiceImplTest {
         clock = Clock.systemUTC();
         service = new SubmissionUploadServiceImpl(
             submissionRepo, templateRepo, eventRepo, examFileRepo, processingJobRepo,
-            gateway, props, clock, identityClient, rabbitTemplate, 10);
+            gateway, props, clock, identityClient, rabbitTemplate, outbox, 10);
     }
 
     @Test
@@ -286,16 +290,11 @@ class SubmissionUploadServiceImplTest {
         assertEquals("UPLOADED", response.status());
         verify(processingJobRepo).insertQueued(any(UUID.class), eq(submissionId), eq("VALIDATE"), eq(1), eq(templateId));
         // §8: message must carry the full schema — no pseudonym/candidateId.
-        verify(rabbitTemplate).convertAndSend(eq("submission.processing"), eq("validate"),
-            argThat((Object msg) -> msg instanceof ValidationWorker.ValidateJobMessage m
-                && m.schemaVersion() == ValidationWorker.ValidateJobMessage.SCHEMA_VERSION
-                && m.submissionId().equals(submissionId)
-                && m.examId().equals(examId)
-                && m.templateId().equals(templateId)
-                && m.fileVersion() == 1
-                && !m.force()
-                && m.attempt() == 0
-                && m.correlationId() != null));
+        verify(outbox).enqueueValidate(
+            argThat((ValidationWorker.ValidateJobMessage m) -> m.schemaVersion() == ValidationWorker.ValidateJobMessage.SCHEMA_VERSION
+                && m.submissionId().equals(submissionId) && m.examId().equals(examId)
+                && m.templateId().equals(templateId) && m.fileVersion() == 1
+                && !m.force() && m.attempt() == 0 && m.correlationId() != null));
         verify(eventRepo).append(submissionId, SubmissionStatus.UPLOADED, 0);
     }
 
@@ -310,7 +309,49 @@ class SubmissionUploadServiceImplTest {
         CompleteSubmissionResponse response = service.complete(submissionId);
 
         assertEquals("UPLOADED", response.status());
-        verifyNoInteractions(rabbitTemplate);
+        verifyNoInteractions(outbox);
         verify(processingJobRepo, never()).insertQueued(any(), any(), any(), anyInt(), any());
+    }
+
+    @Test
+    void retryValidation_requeuesFailedSubmissionWithTemplateOverride() {
+        UUID submissionId = UUID.randomUUID();
+        String objectKey = "original/retry.pdf";
+        Submission submission = new Submission(submissionId, examId, templateId, SubmissionStatus.REVIEW_REQUIRED,
+            2, 0, null, 100L, 100L, objectKey, "TEMPLATE_SIZE_MISMATCH", 0, Instant.now());
+        when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionRepo.transition(submissionId, SubmissionStatus.REVIEW_REQUIRED,
+            SubmissionStatus.VALIDATING, 50)).thenReturn(1);
+        gateway.put(objectKey, new byte[100], "application/pdf");
+
+        Map<String, Object> result = service.retryValidation(submissionId, true);
+
+        assertEquals("VALIDATING", result.get("status"));
+        assertEquals(true, result.get("forceTemplateSize"));
+        verify(submissionRepo).clearFailureCode(submissionId);
+        verify(eventRepo).append(submissionId, SubmissionStatus.VALIDATING, 50);
+        verify(processingJobRepo).insertQueued(any(UUID.class), eq(submissionId), eq("VALIDATE"), eq(2), eq(templateId));
+        verify(outbox).enqueueValidate(
+            argThat((ValidationWorker.ValidateJobMessage job) -> job.force() && job.submissionId().equals(submissionId)));
+    }
+
+    @Test
+    void retryValidation_forceRecoversProcessingJobStuckInValidating() {
+        UUID submissionId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        Submission submission = new Submission(submissionId, examId, templateId, SubmissionStatus.VALIDATING,
+            1, 50, null, 100L, 100L, "original/stuck.pdf", null, 0, Instant.now());
+        when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(processingJobRepo.findJobBySubmissionAndStep(submissionId, "VALIDATE")).thenReturn(Optional.of(
+            new ProcessingJobRepository.JobInfo(jobId, submissionId, "VALIDATE", "PROCESSING", 2,
+                null, null, null, 1, false, false, templateId)));
+
+        Map<String, Object> result = service.retryValidation(submissionId, false, true);
+
+        assertEquals(true, result.get("recovered"));
+        verify(outbox).enqueueValidate(argThat((ValidationWorker.ValidateJobMessage message) ->
+            message.jobId().equals(jobId) && message.submissionId().equals(submissionId)));
+        verify(processingJobRepo).updateJobStatus(jobId, "QUEUED", 2);
+        verify(submissionRepo, never()).transition(any(), any(), any(), anyInt());
     }
 }

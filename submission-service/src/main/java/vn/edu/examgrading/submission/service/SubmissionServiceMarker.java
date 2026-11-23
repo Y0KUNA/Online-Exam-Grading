@@ -25,4 +25,10 @@ public interface SubmissionServiceMarker {
     Map<String, Object> detail(UUID submissionId);
 
     CompleteSubmissionResponse complete(UUID submissionId);
+
+    Map<String, Object> retryValidation(UUID submissionId, boolean forceTemplateSize, boolean recoverStalled);
+
+    default Map<String, Object> retryValidation(UUID submissionId, boolean forceTemplateSize) {
+        return retryValidation(submissionId, forceTemplateSize, false);
+    }
 }

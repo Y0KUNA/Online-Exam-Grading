@@ -35,6 +35,9 @@ public interface SubmissionRepositoryMarker {
     /** Update file_size_bytes after complete() verifies HEAD object. */
     int updateFileSizeBytes(UUID submissionId, long fileSizeBytes);
 
+    /** Clear a previous processing failure when an authorised retry is queued. */
+    int clearFailureCode(UUID submissionId);
+
     /** Delete submission by ID (used for rollback when binding fails). */
     void deleteById(UUID submissionId);
 }

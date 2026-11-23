@@ -237,13 +237,13 @@ class AnonymizationWorkerTest {
     }
 
     @Test
-    void jobNotFound_isAcked() {
+    void jobNotFound_isDelayedForVisibility() {
         when(processingJobRepo.findJobById(jobId)).thenReturn(Optional.empty());
 
         worker.processAnonymizeJob(message(1));
 
         verify(submissionRepo, never()).findById(any());
-        verifyNoInteractions(rabbitTemplate);
+        verify(rabbitTemplate).convertAndSend(eq("submission.anonymize.retry.30s"), any(AnonymizeJobMessage.class));
     }
 
     @Test

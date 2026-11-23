@@ -183,6 +183,8 @@ services:
       DB_URL: jdbc:postgresql://postgres-exam-grading:5432/exam_grading_db
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      SUBMISSION_URL: http://submission-service:8082
+      IDENTITY_HMAC_SECRET: ${IDENTITY_HMAC_SECRET}
     depends_on:
       postgres-exam-grading: { condition: service_healthy }
     healthcheck:

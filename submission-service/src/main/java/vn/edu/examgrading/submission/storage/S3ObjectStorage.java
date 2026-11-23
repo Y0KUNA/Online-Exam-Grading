@@ -1,6 +1,7 @@
 package vn.edu.examgrading.submission.storage;
 
 import io.minio.GetObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.PostPolicy;
 import io.minio.PutObjectArgs;
@@ -8,6 +9,7 @@ import io.minio.RemoveObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
+import io.minio.http.Method;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -77,6 +79,19 @@ public class S3ObjectStorage implements ObjectStorageGateway {
             return new UploadTicket(url, fields, expiry.toInstant());
         } catch (Exception e) {
             throw new StorageUnavailableException("presign POST failed for " + objectKey, e);
+        }
+    }
+
+    @Override
+    public String presignGet(String bucket, String objectKey, Duration ttl) {
+        try {
+            String signed = client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+                .method(Method.GET).bucket(bucket).object(objectKey).expiry((int) ttl.toSeconds()).build());
+            URI uri = URI.create(signed);
+            String base = props.gatewayBase().endsWith("/") ? props.gatewayBase().substring(0, props.gatewayBase().length() - 1) : props.gatewayBase();
+            return base + "/" + bucket + "/" + objectKey + "?" + uri.getRawQuery();
+        } catch (Exception e) {
+            throw new StorageUnavailableException("presign GET failed for " + bucket + "/" + objectKey, e);
         }
     }
 

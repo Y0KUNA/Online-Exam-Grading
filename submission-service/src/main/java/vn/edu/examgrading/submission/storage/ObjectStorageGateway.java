@@ -20,6 +20,9 @@ public interface ObjectStorageGateway {
      */
     UploadTicket presignPost(String objectKey, long declaredBytes, Duration ttl);
 
+    /** Signs a read URL for an object; callers must never construct storage URLs themselves. */
+    String presignGet(String bucket, String objectKey, Duration ttl);
+
     /**
      * Direct put used by tests and non-client writes (e.g. anonymized copies).
      * Not the browser upload path, which goes through {@link #presignPost}.

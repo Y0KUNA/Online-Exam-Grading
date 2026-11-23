@@ -26,15 +26,33 @@ public interface SubmissionRepositoryMarker {
 
     List<Submission> findByExam(UUID examId);
 
+    /**
+     * Keyset page of an exam's submissions, newest {@code updated_at} first.
+     * {@code status} null = no filter; {@code cursorUpdatedAt}/{@code cursorSubmissionId}
+     * non-null = resume strictly after that position. Caller fetches {@code limit + 1}
+     * rows to detect a next page.
+     */
+    List<Submission> findByExamPage(UUID examId, SubmissionStatus status,
+            Instant cursorUpdatedAt, UUID cursorSubmissionId, int limit);
+
     /** Optimistic status move; returns affected rows (0 when {@code expected} does not match). */
     int transition(UUID submissionId, SubmissionStatus expected, SubmissionStatus target, int progress);
 
     /** UPLOADING rows whose upload window has elapsed (feeds the cleanup job). */
     List<Submission> findExpiredUploading(Instant now);
 
+    /**
+     * Conditional UPLOADING → FAILED with a failure code (cleanup job).
+     * Returns affected rows — 0 when the row raced out of UPLOADING.
+     */
+    int failUploading(UUID submissionId, String failureCode);
+
     /** Update file_size_bytes after complete() verifies HEAD object. */
     int updateFileSizeBytes(UUID submissionId, long fileSizeBytes);
 
     /** Delete submission by ID (used for rollback when binding fails). */
     void deleteById(UUID submissionId);
+
+    /** Whether an UPLOADING submission still references this object key (orphan cleanup guard). */
+    boolean existsUploadingWithObjectKey(String objectKey);
 }

@@ -1,0 +1,8 @@
+
+# TEMP local E2E: allow prebuilt bootJars into build context
+!api-gateway/build/libs/*.jar
+!submission-service/build/libs/*.jar
+!exam-grading-service/build/libs/*.jar
+!identity-service/build/libs/*.jar
+!result-review-service/build/libs/*.jar
+!common/build/libs/*.jar

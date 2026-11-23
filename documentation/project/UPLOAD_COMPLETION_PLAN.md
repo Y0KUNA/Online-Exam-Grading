@@ -7,11 +7,6 @@
 
 ## Tổng quan
 
-> **Cập nhật tiến độ: 2026-11-21.** Đánh giá dưới đây dựa trên mã nguồn và các
-> unit test đã chạy. Các mục ghi `⚠️ CẦN XÁC NHẬN TRIỂN KHAI` đã được cài đặt
-> nhưng chưa có bằng chứng end-to-end trên bộ container đang chạy (MinIO,
-> RabbitMQ và các service liên quan).
-
 Luồng nền tảng `init → upload → complete → validate → anonymize` đã được cài đặt
 trong mã nguồn. Phần worker và migration vẫn cần một lượt kiểm chứng end-to-end sau
 khi triển khai image mới. Các phần còn thiếu chủ yếu là endpoint nội bộ/mở rộng,
@@ -25,6 +20,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Dependencies:** Không có
 **Ước tính:** 4-6 giờ
 **Trạng thái:** ✅ HOÀN THÀNH (10/10 task con)
+**Luồng liên quan:** Upload (binding khi init/complete) + Identity (ràng buộc 1 thí sinh 1 bài)
 
 #### Task con:
 1. ✅ Khôi phục `candidateId` field trong `InitSubmissionRequest.java`
@@ -72,7 +68,8 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Mức độ ưu tiên:** Cao
 **Dependencies:** TICKET 01
 **Ước tính:** 8-10 giờ
-**Trạng thái:** ⚠️ CÀI ĐẶT HOÀN THÀNH — CẦN XÁC NHẬN TRIỂN KHAI
+**Trạng thái:** ✅ HOÀN THÀNH (12/12 task con) — đã xác nhận E2E trên stack thật 2026-11-22
+**Luồng liên quan:** Upload (bước VALIDATE) + Review (tạo Review `TEMPLATE_SIZE_MISMATCH`) + Identity (cấp pseudonym)
 
 #### Task con:
 1. ✅ Cấu hình RabbitMQ queue `submission.validate.v1`
@@ -106,7 +103,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 9. ✅ Update ProcessingJob với attempt, error_code, error_detail, next_retry_at
 10. ✅ Guard message: `schemaVersion != 1` → DLQ; `fileVersion != current_file_version` → ack bỏ qua (§8)
 11. ✅ Unit tests cho validation logic
-12. ⚠️ Integration tests với MinIO object đã có, nhưng lần chạy môi trường hiện tại thất bại do MinIO không sẵn sàng; cần chạy lại sau deploy.
+12. ✅ Integration tests với MinIO object thật — `ValidationWorkerMinioTest` 2/2 PASS + E2E stack thật 2026-11-22 (xem header).
 
 **Acceptance Criteria:**
 - Worker consume job từ queue validate
@@ -123,7 +120,8 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Mức độ ưu tiên:** Cao
 **Dependencies:** TICKET 01, TICKET 02
 **Ước tính:** 8-10 giờ
-**Trạng thái:** ⚠️ CÀI ĐẶT HOÀN THÀNH — CẦN XÁC NHẬN TRIỂN KHAI
+**Trạng thái:** ✅ HOÀN THÀNH — đã xác nhận E2E trên stack thật 2026-11-22 (ANONYMIZE job SUCCEEDED, bản ẩn danh trong bucket `anonymized`)
+**Luồng liên quan:** Upload (bước ANONYMIZE) + Review (lỗi template → Review `ANONYMIZATION`) + cơ chế reprocess T17/T18
 
 #### Task con:
 1. ✅ Cấu hình RabbitMQ queue `submission.anonymize.v1` (đã có) + retry queues `submission.anonymize.retry.30s|2m|10m` theo §8
@@ -151,7 +149,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
    - Sau khi ghi bản ẩn danh: `ANONYMIZING → READY_FOR_GRADING` (T09)
 9. ✅ Guard message: `schemaVersion != 1` → DLQ; `fileVersion` stale → ack bỏ qua
 10. ✅ Unit tests cho anonymization logic + test pixel vùng mask (§7.4)
-11. ⚠️ Integration tests với PDF mẫu + MinIO đã có, nhưng cần chạy lại khi MinIO khả dụng.
+11. ✅ Integration tests với PDF mẫu + MinIO thật — `AnonymizationWorkerMinioTest` PASS với `mau-giay-thi-i.pdf` + E2E stack thật 2026-11-22 (xem header).
 
 **Acceptance Criteria:**
 - Worker consume job từ queue anonymize
@@ -168,22 +166,28 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 01
 **Ước tính:** 4-6 giờ
-**Trạng thái:** ⬜ CHƯA THỰC HIỆN
+**Trạng thái:** 🟡 ĐANG THỰC HIỆN (task 1-3 xong, đã verify live 2026-11-23)
+**Luồng liên quan:** Hạ tầng Identity — phục vụ Chấm (pseudonyms lookup cho grader context) + Retention (purge endpoint §9.4)
 
 #### Task con:
-1. Implement `POST /internal/v1/pseudonyms/lookup`
+1. ✅ Implement `POST /internal/v1/pseudonyms/lookup`
    - Request: `{submissionIds:[uuid]}`
    - Response: `{items:[{submissionId,pseudonym}]}`
    - Không trả candidate (theo spec)
-2. Implement `POST /internal/v1/users/lookup`
+2. ✅ Implement `POST /internal/v1/users/lookup`
    - Request: `{userIds:[uuid]}`
    - Response: `{items:[{userId,username,fullName,role,isActive}]}`
-   - Allowlist cho Exam&Grading, Result
+   - Allowlist cho Exam&Grading, Result — `UserLookupController` riêng với `ALLOWED_CALLERS = {exam-grading-service, result-review-service}` (submission-service bị 403)
    - Không trả password_hash
-3. Implement `DELETE /internal/v1/identity/submissions/{id}/pseudonym` (§9 purge, xóa cả `submission_binding`)
-4. Cập nhật OpenAPI
-5. Unit tests
-6. Integration tests
+3. ✅ Implement `DELETE /internal/v1/identity/submissions/{id}/pseudonym` (§9 purge, xóa cả `submission_binding`)
+   - Response `{deletedPseudonyms:int,status:"DONE"}`, idempotent (replay → 200, count=0)
+   - Caller allowlist chỉ `result-review-service` (service orchestration purge §9.4)
+   - `@Transactional` xóa pseudonym + binding trong 1 transaction
+   - Verify live: purge submission E2E → xóa đúng 2 rows trong identity_db; replay → DONE/0; submission-service → 403
+   - Lưu ý: chưa có bảng `pseudonym_history` (spec nhắc PseudonymHistory cho chỉnh phách thủ công — thuộc phạm vi khác, chưa implement)
+4. ✅ Cập nhật OpenAPI — `identity.yaml` đã có `/pseudonyms`, `/pseudonyms/lookup`, `/users/lookup`, `DELETE /identity/submissions/{id}/pseudonym` (2026-11-23)
+5. ✅ Unit tests — `PseudonymControllerTest` (7, gồm 3 purge tests) + `UserLookupControllerTest` (4) PASS
+6. 🟡 Integration tests — đã verify live trên stack Docker (cả 3 endpoint, positive + negative); chưa có automated integration test (Testcontainers)
 
 **Acceptance Criteria:**
 - Pseudonyms lookup trả đúng số phách theo submissionIds
@@ -199,16 +203,17 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Dependencies:** TICKET 01, TICKET 02, TICKET 03
 **Ước tính:** 6-8 giờ
 **Trạng thái:** 🟡 THỰC HIỆN MỘT PHẦN (mới có endpoint chuyển trạng thái có ký HMAC)
+**Luồng liên quan:** Internal API đa luồng — Chấm (attempt-summary/discard-open-work, thuộc exam-grading-service) + Kết quả/Remark (finalize T20) + Review/Chấm (file access ANONYMIZED)
 
 #### Task con:
-1. Implement `GET /internal/v1/submissions/{id}`
+1. ✅ Implement `GET /internal/v1/submissions/{id}`
    - Response: `{submissionId,examId,status,version:int}`
-2. Implement `POST /internal/v1/submissions/{id}/files/{type}/access`
+2. ✅ Implement `POST /internal/v1/submissions/{id}/files/{type}/access`
    - type=ORIGINAL|ANONYMIZED
    - Response: `{url,expiresAt}` (5 phút)
    - Service credential, caller đã tự kiểm quyền
    - ANONYMIZED của bản đang bị thay (VALIDATING/ANONYMIZING reprocess) → 409 `FILE_NOT_READY` (§4.6)
-3. Implement `POST /internal/v1/submissions/{id}/finalize`
+3. ✅ Implement `POST /internal/v1/submissions/{id}/finalize`
    - Request: `{finalizedAt,retentionDeadline,idempotencyKey}`
    - Response: `{status:"FINALIZED",version:int}`
    - Idempotent theo submissionId; retention_deadline = finalized_at + 1 năm (T20)
@@ -216,14 +221,14 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
    - Request: `{expectedStatus?,newStatus,reasonCode?,progress?,finalizedAt?,idempotencyKey?}`
    - Response: `{submissionId,status,version:int}`
    - Optimistic version
-5. Implement `GET /internal/v1/grading/submissions/{id}/attempt-summary`
+5. ✅ Implement `GET /internal/v1/grading/submissions/{id}/attempt-summary`
    - Response: `{confirmedCount,draftCount,openAssignmentCount}`
-6. Implement `POST /internal/v1/grading/submissions/{id}/discard-open-work`
+6. ✅ Implement `POST /internal/v1/grading/submissions/{id}/discard-open-work`
    - Idempotent theo replacementId
    - Hủy assignment mở, đặt lượt DRAFT → DISCARDED (dùng cho replace-file §4.4)
-7. Cập nhật OpenAPI
-8. Unit tests
-9. Integration tests
+7. ✅ Cập nhật OpenAPI — thêm `submission.yaml` (4 internal endpoints) + `exam-grading.yaml` (attempt-summary, discard-open-work)
+8. ✅ Unit tests — `InternalSubmissionControllerTest` (13) + `InternalGradingControllerTest` (5) PASS
+9. ✅ Integration tests — `InternalSubmissionControllerIT` (6 tests, submission_it @5433) + `InternalGradingControllerIT` (4 tests, exam_grading_it @5434) PASS trên Postgres compose; Flyway rebuild schema mỗi run, IT dùng Postgres compose + database riêng (submission_it, exam_grading_it)
 
 **Acceptance Criteria:**
 - Tất cả internal endpoints hoạt động đúng theo spec
@@ -237,31 +242,35 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 05
 **Ước tính:** 6-8 giờ
-**Trạng thái:** 🟡 THỰC HIỆN MỘT PHẦN (đã có detail và list theo kỳ thi, chưa đủ hợp đồng spec)
+**Trạng thái:** ✅ HOÀN THÀNH (toàn bộ public endpoints + OpenAPI đúng contract spec, chỉ EXAM_OFFICE; unit + integration tests PASS)
+**Luồng liên quan:** Upload (public API trạng thái/file/SSE) + Remark/Retention (`PUT /pseudonym` chặn sau FINALIZED) + Review (`GET identity` ghép phách)
 
 #### Task con:
 1. ✅ Implement `GET /api/v1/submissions/{submissionId}`
    - Response: `{submissionId,examId,status,pageCount?,progress,int,error?,updatedAt}`
    - Chỉ EXAM_OFFICE (theo E-06)
-2. 🟡 Implement `GET /api/v1/exams/{examId}/submissions` (đã trả danh sách; chưa có `status/cursor/limit/nextCursor`)
-   - Query: `status?,cursor?,limit?`
-   - Response: `{items:[...],nextCursor}`
-   - Chỉ EXAM_OFFICE
-3. Implement `GET /api/v1/submissions/{id}/identity`
-   - Response: `{candidateNumber,fullName,className,pseudonym}`
-   - Chỉ EXAM_OFFICE (ghép phách, FR-019), ghi audit
-4. Implement `PUT /api/v1/submissions/{id}/pseudonym`
-   - Chỉnh phách thủ công, bắt buộc `reason`, ghi `PseudonymHistory`; chỉ khi chưa FINALIZED
-5. Implement `GET /api/v1/submissions/{id}/files`
-   - Danh sách phiên bản file (ORIGINAL/ANONYMIZED, version, is_current)
-6. Implement SSE `GET /api/v1/exams/{examId}/submissions/events`
-   - Event: `submission-status`
-   - Data: `{submissionId,status,progress,updatedAt}`
-   - Heartbeat 15s
-   - Last-Event-ID support
-7. Cập nhật OpenAPI
-8. Unit tests
-9. Integration tests
+2. ✅ Implement `GET /api/v1/exams/{examId}/submissions` 
+   - Query: `status?,cursor?,limit?` (limit mặc định 50, max 200 — D-06)
+   - Response: `{items:[...],nextCursor}` — keyset pagination trên `(updated_at, submission_id)` DESC, cursor opaque base64url
+   - Item dùng chung projection spec với detail; chỉ EXAM_OFFICE (gateway rule `/api/v1/exams/*/submissions` GET → EO, trước rule exams/** cho GRADER/COUNCIL)
+3. ✅ Implement `GET /api/v1/submissions/{id}/identity` 
+   - Response: `{candidateNumber,fullName,className,pseudonym}` (không trả candidateId)
+   - Chỉ EXAM_OFFICE (gateway `GET /api/v1/submissions/**` → EO), ghi audit `SUBMISSION_IDENTITY_VIEWED` vào audit_log
+   - Submission Service gọi Identity internal `GET /internal/v1/submissions/{id}/identity` (HMAC, join binding→candidate→pseudonym, 404 BINDING_NOT_FOUND)
+4. ✅ Implement `PUT /api/v1/submissions/{id}/pseudonym` 
+   - Body `{pseudonym,reason}`, reason bắt buộc (422 `REASON_REQUIRED`); chỉ khi chưa FINALIZED (409 `INVALID_STATE`)
+   - Submission Service → Identity `PUT /internal/v1/submissions/{id}/pseudonym` (HMAC): update value + insert `pseudonym_history` trong 1 transaction; trùng value → idempotent; trùng phách exam → 409 `PSEUDONYM_TAKEN`; chưa có pseudonym → 404→409
+   - `changed_by` = JWT `sub` (users.user_id, D-14); audit `SUBMISSION_PSEUDONYM_CHANGED` ở submission DB
+   - Migration V7: bảng `pseudonym_history` + nới `pseudonym.value` varchar(8)→varchar(64) theo spec
+5. ✅ Implement `GET /api/v1/submissions/{id}/files` 
+   - Response `{items:[{type,version,isCurrent,sizeBytes,sha256?,createdAt}]}` — không trả object key/URL (§4.4)
+   - `ExamFileRepository.findAllBySubmission` + record `ExamFileVersion`; sha256/sizeBytes optional
+6. ✅ Implement SSE `GET /api/v1/exams/{examId}/submissions/events` 
+   - Event: `submission-status`, data `{submissionId,status,progress,updatedAt}`, `id:<event_id>`
+   - Poll `submission_event` (đã có sẵn exam_id/event_id) mỗi 1s; heartbeat comment 15s; `Last-Event-ID` replay; timeout 30m (`app.sse.timeout-minutes`); chỉ EXAM_OFFICE (gateway `/api/v1/exams/*/submissions/**`)
+7. ✅ Cập nhật OpenAPI — `gateway.yaml` đủ 6 public endpoints của ticket (detail, list+phân trang, identity, files, pseudonym PUT, SSE events); `identity.yaml` thêm `GET /internal/v1/submissions/{id}/identity` + `PUT /internal/v1/submissions/{id}/pseudonym`. Cả 2 file YAML valid.
+8. ✅ Unit tests — `SubmissionControllerTest` (MockMvc standalone: detail/list/identity/files/pseudonym, shape + không leak objectKey/failureCode, param lỗi → 400) + `GatewaySecurityConfigTest` (WebTestClient + ReactiveJwtDecoder: EO allow, GRADER/COUNCIL 403 trên detail/list/identity/files/pseudonym/SSE, exams reads vẫn cho GRADER/COUNCIL). Cộng dồn unit test theo từng task: `SubmissionUploadServiceImplTest` 28, `PseudonymControllerTest` 15, `SubmissionEventsControllerTest` 3 — tất cả PASS
+9. ✅ Integration tests — `SubmissionPublicApiIT` (8 tests, Postgres `submission_it` thật qua compose, Flyway migrate; Identity/RabbitMQ mock, storage in-memory): init→upload→complete→detail/list/files/events end-to-end, keyset pagination 3 trang không trùng, param lỗi → 400, identity shape không leak candidateId + audit không PII, pseudonym update forward JWT sub + audit, FINALIZED → 409, SSE replay từ Last-Event-ID
 
 **Acceptance Criteria:**
 - GET submissions hoạt động đúng với phân trang
@@ -276,24 +285,34 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Mức độ ưu tiên:** Trung bình
 **Dependencies:** TICKET 01
 **Ước tính:** 4-6 giờ
-**Trạng thái:** ⬜ CHƯA THỰC HIỆN
+**Trạng thái:** ✅ HOÀN THÀNH
+**Luồng liên quan:** Vận hành — Upload (dọn upload hết hạn) + pipeline (reconciler ProcessingJob của T02/T03) + Retention (purge §9.5, liên quan remark window của T11)
 
 #### Task con:
-1. Implement scheduler chuyển UPLOADING → FAILED sau upload_expires_at
-   - Cron: mỗi 5 phút
-   - Query: `WHERE status='UPLOADING' AND upload_expires_at < now`
-   - Action: chuyển FAILED, failure_code=UPLOAD_ABANDONED
-   - Gọi Identity binding/release
-2. Implement scheduler dọn orphan object trong MinIO
-   - Cron: mỗi giờ
-   - Query MinIO bucket original
-   - Tìm object không có ExamFile tương ứng (an toàn > 1 giờ)
-   - Xóa object orphan
-3. Implement **reconciler** (§8): mỗi 5 phút requeue `ProcessingJob` ở `QUEUED` quá 10 phút (cả step VALIDATE và ANONYMIZE) — chống mất message
-4. Implement scheduler retention/purge (§9.5): sau `retention_deadline` → purge dữ liệu chi tiết theo FR-025 (gọi Identity purge endpoint)
-5. Cấu hình Spring Scheduler
-6. Unit tests cho scheduler logic
-7. Integration tests với PostgreSQL + MinIO
+1. ✅ Implement scheduler chuyển UPLOADING → FAILED sau upload_expires_at
+   - Cron: mỗi 5 phút (`@Scheduled` `app.jobs.upload-cleanup-cron`, mặc định `0 */5 * * * *`)
+   - Query: `findExpiredUploading(now)` — `WHERE status='UPLOADING' AND upload_expires_at < now`
+   - Action: `failUploading` atomic UPDATE → FAILED + failure_code=UPLOAD_ABANDONED + version+1 (0 rows khi race với complete); append `submission_event` FAILED + audit `SUBMISSION_STATUS_CHANGED`
+   - Gọi Identity `releaseBinding(submissionId,"UPLOAD_ABANDONED")` (best-effort, idempotent); `@EnableScheduling` đã bật; mỗi row xử lý độc lập, lỗi 1 row không chặn batch
+2. ✅ Implement scheduler dọn orphan object trong MinIO
+   - Cron: mỗi giờ (`@Scheduled` `app.jobs.orphan-cleanup-cron`, mặc định `0 0 * * * *`)
+   - `ObjectStorageGateway.list(bucket)` mới (S3: MinIO `listObjects` recursive; InMemory: track lastModified + Clock); `ObjectInfo(objectKey,lastModified,sizeBytes)`
+   - Guard 3 lớp: `lastModified` null/quá mới (< `app.jobs.orphan-grace-minutes`=60) giữ lại; có `exam_file.object_key` giữ lại; `submission.object_key` còn UPLOADING giữ lại (upload đang chạy/chưa complete chưa có exam_file)
+   - Xóa phần còn lại (abandoned FAILED, FILE_TOO_LARGE, foreign); per-object try/catch, list lỗi → abort êm
+3. ✅ Implement **reconciler** (§8): mỗi 5 phút requeue `ProcessingJob` ở `QUEUED` quá 10 phút (cả step VALIDATE và ANONYMIZE) — chống mất message
+   - `ProcessingJobReconciler` (`app.jobs.reconcile-cron` default `0 */5 * * * *`, stale `app.jobs.reconcile-stale-minutes`=10, sweep 200/lần)
+   - `findStaleQueued`: `status='QUEUED' AND updated_at < cutoff AND (next_retry_at IS NULL OR <= now)` join submission lấy exam_id
+   - Rebuild message từ job row (không tin payload cũ): VALIDATE → `ValidateJobMessage` (templateId/force/fileVersion/attempt từ job, fallback template submission); ANONYMIZE → re-fetch pseudonym qua `createPseudonym` cùng deterministic key `submissionId:pseudonym`
+   - Skip submission FAILED/FINALIZED/missing; worker idempotent theo jobId nên duplicate delivery an toàn; per-job try/catch
+4. ✅ Implement scheduler retention/purge (§9.3/§9.5, FR-025, D-03) — orchestrator ở result-review-service theo spec
+   - `RetentionScheduler` daily cron `app.retention.cron`/`RETENTION_CRON` default `0 0 2 * * *`; `JdbcFinalResultRepository`: chọn `is_current AND !retention_hold AND retention_deadline<=now AND purge_status∈{PENDING,FAILED}` → claim conditional → IN_PROGRESS (thua race với remark)
+   - `PurgeClient`: 3 lệnh purge HMAC caller `result-review-service` + `Idempotency-Key=resultId:retention:v1` (404 = DONE)
+   - Purge endpoints mới: submission `DELETE /internal/v1/submissions/{id}/detail` (xóa object mọi version cả 2 bucket + exam_file/event/processing_job/audit_log + submission row, chỉ result-review-service); exam-grading `DELETE /internal/v1/grading/submissions/{id}/detail` (xóa question_score/attempt/assignment); identity purge đã có sẵn
+   - Self-delete review/council_decision/review_note/audit_log; đủ 4 receipts → `purge_status=PURGED` + `submission_id=NULL` (migration V3 nới NOT NULL); lỗi → FAILED retry lần sau
+   - Lưu ý: scheduler chỉ có dữ liệu khi Ticket 11 (finalize saga) ghi `final_result`
+5. ✅ Cấu hình Spring Scheduler — `@EnableScheduling` trên cả submission-service và result-review-service; `SchedulingConfig` ThreadPoolTaskScheduler pool `app.jobs.pool-size`=4 (thread `submission-job-*`, graceful shutdown 30s); `application.yml` khai báo đủ cron props map env spec §10: `ABANDONED_SCAN_CRON`, `ORPHAN_SCAN_CRON`, `ORPHAN_GRACE_MINUTES`, `RECONCILE_CRON`, `RECONCILE_STALE_MINUTES`, `RETENTION_CRON` (result-review)
+6. ✅ Unit tests cho scheduler logic — `UploadCleanupJobTest` (5), `OrphanObjectCleanupJobTest` (7), `ProcessingJobReconcilerTest` (7), `RetentionSchedulerTest` (6), `PurgeClientTest` (4: URL/HMAC/Idempotency-Key/404=DONE), purge endpoint tests trong `InternalSubmissionControllerTest` (+3) và `InternalGradingControllerTest` (+2) — tất cả PASS
+7. ✅ Integration tests với PostgreSQL + MinIO — `SchedulerJobsIT` (submission_it @5433, 6 tests: upload-abandonment FAILED+event+audit+releaseBinding, orphan cleanup InMemory aging + MinIO thật `original` bucket với grace âm, reconciler requeue VALIDATE/ANONYMIZE + skip fresh/terminal, purge endpoint xóa hết + idempotent + 403 sai caller); `InternalGradingControllerIT` +1 purge test (exam_grading_it @5434); `RetentionSchedulerIT` (result_review_it @5435, 5 tests: PURGED+submission_id NULL+đúng thứ tự 3 receipts+self-delete, FAILED retry, skip held/future/IN_PROGRESS, lỗi→FAILED tiếp tục candidate sau, null submissionId đóng êm); `result-review-service/build.gradle` thêm `user.timezone=UTC` cho test JVM (pgjdbc gửi TimeZone startup param, server không nhận `Asia/Saigon`)
 
 **Acceptance Criteria:**
 - Upload expired chuyển FAILED đúng thời gian
@@ -310,6 +329,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Dependencies:** Không có
 **Ước tính:** 2-3 giờ
 **Trạng thái:** ✅ HOÀN THÀNH (được thực hiện cùng TICKET 01)
+**Luồng liên quan:** Schema Identity binding — nền cho TICKET 01
 
 #### Task con:
 1. Tạo migration cho Identity DB:
@@ -338,6 +358,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Dependencies:** TICKET 02, TICKET 03, TICKET 05
 **Ước tính:** 8-10 giờ
 **Trạng thái:** ⬜ CHƯA THỰC HIỆN
+**Luồng liên quan:** Upload (file version mới, validate/anonymize lại) + Chấm (hủy assignment/attempt DRAFT qua discard-open-work) + Review (đóng Review `REPLACE_FILE`) + Identity (giữ phách)
 
 #### Task con:
 1. Implement `POST /api/v1/submissions/{id}/replace-file` (EO)
@@ -369,6 +390,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Dependencies:** TICKET 03, TICKET 06
 **Ước tính:** 8-10 giờ
 **Trạng thái:** ⬜ CHƯA THỰC HIỆN
+**Luồng liên quan:** Review (issues T27/T28, retry T17–T19) + Upload pipeline (worker overwrite ANONYMIZED) + dùng chung `PageMasker` với T03 + FILE_NOT_READY của T05 task 2
 
 #### Task con:
 1. Implement `POST /api/v1/submissions/{id}/anonymization-preview` (chỉ EO)
@@ -402,6 +424,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Dependencies:** TICKET 05, TICKET 06
 **Ước tính:** 6-8 giờ
 **Trạng thái:** ⬜ CHƯA THỰC HIỆN
+**Luồng liên quan:** Remark/Phúc khảo (T21–T23, remark window §9.5) + Kết quả (finalize saga T20, FinalResult versioning) + Retention (`retention_hold`, `retention_deadline` do T07 purge dùng)
 
 #### Task con:
 1. Implement `POST /api/v1/submissions/{id}/remark` (EO)
@@ -427,6 +450,7 @@ scheduler-reconciler, replace-file, preview/retry và finalize/retention.
 **Dependencies:** Không có
 **Ước tính:** 2-3 giờ
 **Trạng thái:** 🟡 CÀI ĐẶT XONG, CẦN KIỂM CHỨNG MIGRATION TRÊN DB TRIỂN KHAI
+**Luồng liên quan:** Schema nền upload pipeline — điều kiện của TICKET 02/03
 
 #### Task con:
 1. ✅ Migration `processing_job`: đảm bảo cột `attempt`, `error_code`, `error_detail`, `next_retry_at`, status enum gồm `QUEUED|PROCESSING|SUCCEEDED|FAILED`

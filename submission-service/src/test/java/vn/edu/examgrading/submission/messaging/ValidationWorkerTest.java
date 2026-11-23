@@ -21,7 +21,6 @@ import vn.edu.examgrading.submission.client.ResultClient;
 import vn.edu.examgrading.submission.domain.Submission;
 import vn.edu.examgrading.submission.domain.SubmissionStatus;
 import vn.edu.examgrading.submission.dto.PseudonymResponse;
-import vn.edu.examgrading.submission.messaging.AnonymizeJobMessage;
 import vn.edu.examgrading.submission.messaging.ValidationWorker.ValidateJobMessage;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository;
 import vn.edu.examgrading.submission.repository.ProcessingJobRepository;
@@ -78,7 +77,7 @@ class ValidationWorkerTest {
     private void stubSubmission(SubmissionStatus status, int fileVersion, String objectKey) {
         Submission submission = new Submission(
             submissionId, examId, templateId, status,
-            fileVersion, 0, null, 1024L, null, objectKey, null, 0, Instant.now());
+            fileVersion, 0, null, 1024L, null, null, objectKey, null, 0, Instant.now());
         when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
     }
 

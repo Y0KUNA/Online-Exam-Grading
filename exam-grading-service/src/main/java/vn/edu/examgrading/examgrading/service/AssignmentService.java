@@ -36,6 +36,33 @@ public class AssignmentService {
         return Map.of("created", created);
     }
 
+    /**
+     * Replace-file saga step (§4.4): discards DRAFT attempts and cancels open
+     * assignments for a submission. Blocked by ATTEMPTS_EXIST when any attempt is
+     * CONFIRMED. Naturally idempotent — a replay finds no open work.
+     */
+    @Transactional
+    public Map<String, Object> discardOpenWork(UUID submissionId) {
+        Integer confirmed = jdbc.queryForObject("""
+            select count(*) from grading_attempt t
+            join grading_assignment ga on ga.assignment_id = t.assignment_id
+            where ga.submission_id = ? and t.status = 'CONFIRMED'
+            """, Integer.class, submissionId);
+        if (confirmed != null && confirmed > 0) {
+            throw new IllegalStateException("ATTEMPTS_EXIST");
+        }
+        int discarded = jdbc.update("""
+            update grading_attempt set status='DISCARDED'
+            where status='DRAFT' and assignment_id in (
+                select assignment_id from grading_assignment where submission_id=?)
+            """, submissionId);
+        int cancelled = jdbc.update("""
+            update grading_assignment set status='CANCELLED'
+            where submission_id=? and status in ('ASSIGNED','IN_PROGRESS')
+            """, submissionId);
+        return Map.of("discardedAttempts", discarded, "cancelledAssignments", cancelled);
+    }
+
     public Map<String, Object> listAssignments(UUID graderId) {
         return Map.of("items", jdbc.queryForList("select assignment_id as \"assignmentId\",exam_id as \"examId\",submission_id as \"submissionId\",grader_id as \"graderId\",status,assigned_at as \"assignedAt\" from grading_assignment where grader_id=? order by assigned_at desc", graderId));
     }

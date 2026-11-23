@@ -76,6 +76,32 @@ public class JdbcProcessingJobRepository implements ProcessingJobRepository {
         return jdbcTemplate.query(sql, this::mapJob, submissionId, step).stream().findFirst();
     }
 
+    @Override
+    public java.util.List<StaleJob> findStaleQueued(Instant staleBefore, Instant now, int limit) {
+        String sql = """
+            SELECT j.job_id, j.submission_id, s.exam_id, j.step, j.attempt,
+                   j.file_version, j.force, j.overwrite, j.template_id
+            FROM processing_job j
+            JOIN submission s ON s.submission_id = j.submission_id
+            WHERE j.status = 'QUEUED'
+              AND j.updated_at < ?
+              AND (j.next_retry_at IS NULL OR j.next_retry_at <= ?)
+            ORDER BY j.updated_at
+            LIMIT ?
+            """;
+        return jdbcTemplate.query(sql, (rs, rowNum) -> new StaleJob(
+            rs.getObject("job_id", UUID.class),
+            rs.getObject("submission_id", UUID.class),
+            rs.getObject("exam_id", UUID.class),
+            rs.getString("step"),
+            rs.getInt("attempt"),
+            rs.getInt("file_version"),
+            rs.getBoolean("force"),
+            rs.getBoolean("overwrite"),
+            rs.getObject("template_id", UUID.class)
+        ), toOffsetDateTimeUtc(staleBefore), toOffsetDateTimeUtc(now), limit);
+    }
+
     private JobInfo mapJob(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         return new JobInfo(
             rs.getObject("job_id", UUID.class),

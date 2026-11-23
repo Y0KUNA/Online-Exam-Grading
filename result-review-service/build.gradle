@@ -15,3 +15,7 @@ dependencies {
     testImplementation 'org.testcontainers:postgresql:1.20.4'
     testImplementation 'org.testcontainers:jdbc:1.20.4'
 }
+
+tasks.withType(Test).configureEach {
+    systemProperty 'user.timezone', 'UTC'
+}

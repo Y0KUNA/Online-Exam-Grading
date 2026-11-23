@@ -20,7 +20,18 @@ public interface ProcessingJobRepository {
     /** Find job by its id (spec §8 idempotency is keyed on jobId). */
     java.util.Optional<JobInfo> findJobById(UUID jobId);
 
+    /**
+     * QUEUED jobs untouched since {@code staleBefore} whose retry time (if any)
+     * has already passed — feeds the reconciler that republishes lost messages.
+     * Joins submission for examId; capped at {@code limit} rows per sweep.
+     */
+    java.util.List<StaleJob> findStaleQueued(Instant staleBefore, Instant now, int limit);
+
     record JobInfo(UUID jobId, UUID submissionId, String step, String status, int attempt,
                    String errorCode, String errorDetail, Instant nextRetryAt,
                    int fileVersion, boolean force, boolean overwrite, UUID templateId) {}
+
+    /** Stale QUEUED job plus the owning exam, for message republish. */
+    record StaleJob(UUID jobId, UUID submissionId, UUID examId, String step, int attempt,
+                    int fileVersion, boolean force, boolean overwrite, UUID templateId) {}
 }

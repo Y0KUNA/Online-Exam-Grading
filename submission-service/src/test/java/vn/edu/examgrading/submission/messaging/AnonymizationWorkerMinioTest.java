@@ -107,7 +107,7 @@ class AnonymizationWorkerMinioTest {
     private void stubSubmissionAndFile() {
         Submission submission = new Submission(
             submissionId, examId, templateId, SubmissionStatus.VALIDATING,
-            1, 0, null, 1024L, null, objectKey, null, 0, Instant.now());
+            1, 0, null, 1024L, null, null, objectKey, null, 0, Instant.now());
         when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
         when(examFileRepo.findCurrentOriginal(submissionId))
             .thenReturn(Optional.of(new ExamFileRepository.OriginalFile(

@@ -2,6 +2,7 @@ package vn.edu.examgrading.submission.storage;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -26,6 +27,12 @@ public interface ObjectStorageGateway {
      */
     void put(String objectKey, byte[] content, String contentType);
 
+    /**
+     * Signs a presigned GET for an existing object, valid for {@code ttl}.
+     * The returned URL is rewritten onto the public Gateway storage prefix.
+     */
+    AccessTicket presignGet(String bucket, String objectKey, Duration ttl);
+
     /** HEAD the object; empty when it does not exist. sha256 is filled later at VALIDATING. */
     Optional<StoredObject> head(String objectKey);
 
@@ -43,9 +50,21 @@ public interface ObjectStorageGateway {
 
     void delete(String bucket, String objectKey);
 
+    /**
+     * Lists every object in {@code bucket} (recursive). Used by the orphan
+     * cleanup job; implementations should page through the full listing.
+     */
+    List<ObjectInfo> list(String bucket);
+
     /** Form URL plus fields a client must POST verbatim to upload the object. */
     record UploadTicket(String url, Map<String, String> fields, Instant expiresAt) { }
 
+    /** Presigned GET URL plus its expiry. */
+    record AccessTicket(String url, Instant expiresAt) { }
+
     /** Reference to a stored object; {@code sha256} may be null until computed. */
     record StoredObject(String objectKey, long sizeBytes, String sha256) { }
+
+    /** Listing entry for orphan scans: key plus server-side last-modified time. */
+    record ObjectInfo(String objectKey, Instant lastModified, long sizeBytes) { }
 }

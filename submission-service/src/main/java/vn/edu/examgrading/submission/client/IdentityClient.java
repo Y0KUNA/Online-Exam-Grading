@@ -1,6 +1,7 @@
 package vn.edu.examgrading.submission.client;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,7 @@ import vn.edu.examgrading.submission.dto.PseudonymRequest;
 import vn.edu.examgrading.submission.dto.PseudonymResponse;
 import vn.edu.examgrading.submission.dto.SubmissionBindingRequest;
 import vn.edu.examgrading.submission.dto.SubmissionBindingReleaseRequest;
+import vn.edu.examgrading.submission.dto.SubmissionIdentity;
 import vn.edu.examgrading.common.security.HmacSigner;
 
 /**
@@ -96,6 +98,41 @@ public class IdentityClient {
 
         try {
             return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(request, headers), PseudonymResponse.class).getBody();
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                e.getStatusCode(), e.getResponseBodyAsString());
+        }
+    }
+
+    /**
+     * Resolve a submission's candidate identity + pseudonym (FR-019 ghép phách).
+     * Backed by Identity {@code GET /internal/v1/submissions/{id}/identity};
+     * propagates 404 when the submission has no ACTIVE binding.
+     */
+    public SubmissionIdentity getSubmissionIdentity(UUID submissionId) {
+        String url = identityBaseUrl + "/internal/v1/submissions/" + submissionId + "/identity";
+        try {
+            return restTemplate.exchange(url, HttpMethod.GET,
+                new HttpEntity<>(signedHeaders()), SubmissionIdentity.class).getBody();
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                e.getStatusCode(), e.getResponseBodyAsString());
+        }
+    }
+
+    /**
+     * Manual phách edit (D-10): forwards to Identity
+     * {@code PUT /internal/v1/submissions/{id}/pseudonym} which updates the value
+     * and appends PseudonymHistory. {@code changedBy} is the EO's user_id (D-14).
+     */
+    public void updatePseudonym(UUID submissionId, String value, String reason, String changedBy) {
+        String url = identityBaseUrl + "/internal/v1/submissions/" + submissionId + "/pseudonym";
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("value", value);
+        body.put("reason", reason);
+        body.put("changedBy", changedBy);
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(body, signedHeaders()), Void.class);
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             throw new org.springframework.web.server.ResponseStatusException(
                 e.getStatusCode(), e.getResponseBodyAsString());

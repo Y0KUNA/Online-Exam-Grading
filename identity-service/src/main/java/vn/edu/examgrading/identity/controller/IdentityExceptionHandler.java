@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.server.ResponseStatusException;
 import vn.edu.examgrading.common.api.ApiError;
 import vn.edu.examgrading.identity.service.IdentityAuthService;
 
@@ -33,6 +34,16 @@ public class IdentityExceptionHandler {
     ResponseEntity<ApiError> userNotFound(WebRequest request) {
         log.warn("User not found: requestId={}", request.getHeader("X-Request-Id"));
         return error(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found", request);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<ApiError> statusError(ResponseStatusException exception, WebRequest request) {
+        String reason = exception.getReason() != null ? exception.getReason() : "REQUEST_FAILED";
+        log.warn("Request rejected: status={} reason={} requestId={}",
+                exception.getStatusCode(), reason, request.getHeader("X-Request-Id"));
+        HttpStatus status = exception.getStatusCode() instanceof HttpStatus httpStatus
+                ? httpStatus : HttpStatus.resolve(exception.getStatusCode().value());
+        return error(status != null ? status : HttpStatus.INTERNAL_SERVER_ERROR, reason, reason, request);
     }
 
     @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class})

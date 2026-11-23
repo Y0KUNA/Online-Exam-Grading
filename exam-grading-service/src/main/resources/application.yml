@@ -8,3 +8,4 @@ spring:
   jpa.hibernate.ddl-auto: validate
   flyway.enabled: true
 management.endpoints.web.exposure.include: health,info
+app.internal.hmac-secret: ${IDENTITY_HMAC_SECRET:replace-with-a-32-byte-minimum-secret}

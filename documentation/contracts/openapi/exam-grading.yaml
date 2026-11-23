@@ -1,0 +1,103 @@
+openapi: 3.0.3
+info:
+  title: Online Exam Grading Exam & Grading Service
+  version: 0.1.0
+  description: Internal endpoints for Exam & Grading service. Not exposed through Gateway.
+paths:
+  /internal/v1/grading/submissions/{submissionId}/attempt-summary:
+    get:
+      summary: Attempt counters for a submission
+      description: |
+        Called by Submission service before allowing a file replacement (§4.4).
+        confirmedCount > 0 blocks replace-file with 409 ATTEMPTS_EXIST.
+        Caller: submission-service (service credential).
+        Requires service-to-service HMAC headers: X-Service-Caller,
+        X-Service-Request-Id, X-Service-Timestamp, X-Service-Signature.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Attempt summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptSummary'
+        '403':
+          description: Invalid service signature or caller not in allowlist
+  /internal/v1/grading/submissions/{submissionId}/discard-open-work:
+    post:
+      summary: Discard open grading work for a submission
+      description: |
+        Replace-file saga step (§4.4), called synchronously by Submission service
+        before swapping ExamFile rows. Sets DRAFT attempts to DISCARDED and
+        cancels ASSIGNED/IN_PROGRESS assignments. Idempotent via
+        Idempotency-Key=replacementId — replay returns the stored response.
+        409 ATTEMPTS_EXIST when any attempt is CONFIRMED.
+        Caller: submission-service (service credential).
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: replacementId of the file_replacement row
+      responses:
+        '200':
+          description: Open work discarded (or idempotent replay)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscardOpenWorkResponse'
+        '403':
+          description: Invalid service signature or caller not in allowlist
+        '409':
+          description: ATTEMPTS_EXIST - submission has CONFIRMED attempts
+components:
+  schemas:
+    AttemptSummary:
+      type: object
+      required:
+        - confirmedCount
+        - draftCount
+        - openAssignmentCount
+      properties:
+        confirmedCount:
+          type: integer
+          description: grading_attempt rows with status CONFIRMED
+        draftCount:
+          type: integer
+          description: grading_attempt rows with status DRAFT (DISCARDED excluded)
+        openAssignmentCount:
+          type: integer
+          description: grading_assignment rows ASSIGNED or IN_PROGRESS
+    DiscardOpenWorkResponse:
+      type: object
+      required:
+        - discardedAttempts
+        - cancelledAssignments
+      properties:
+        discardedAttempts:
+          type: integer
+          description: DRAFT attempts moved to DISCARDED
+        cancelledAssignments:
+          type: integer
+          description: ASSIGNED/IN_PROGRESS assignments moved to CANCELLED
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error code or message

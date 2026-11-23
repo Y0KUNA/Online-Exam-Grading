@@ -1,7 +1,11 @@
 package vn.edu.examgrading.submission.storage;
 
 import io.minio.GetObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
+import io.minio.ListObjectsArgs;
 import io.minio.MinioClient;
+import io.minio.http.Method;
+import io.minio.messages.Item;
 import io.minio.PostPolicy;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
@@ -17,7 +21,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import vn.edu.examgrading.submission.storage.config.StorageProperties;
@@ -77,6 +83,31 @@ public class S3ObjectStorage implements ObjectStorageGateway {
             return new UploadTicket(url, fields, expiry.toInstant());
         } catch (Exception e) {
             throw new StorageUnavailableException("presign POST failed for " + objectKey, e);
+        }
+    }
+
+    @Override
+    public AccessTicket presignGet(String bucket, String objectKey, Duration ttl) {
+        try {
+            String presigned = client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+                    .method(Method.GET)
+                    .bucket(bucket)
+                    .object(objectKey)
+                    .expiry((int) ttl.toSeconds())
+                    .build());
+            // SigV4 signs host+path+query; keep the signed path/query verbatim and only
+            // swap scheme+authority for the public Gateway base. The Gateway storage
+            // filter rewrites Host back to the upstream, so the signature still verifies.
+            URI signed = URI.create(presigned);
+            String pathAndQuery = signed.getRawPath()
+                    + (signed.getRawQuery() == null ? "" : "?" + signed.getRawQuery());
+            String base = props.gatewayBase();
+            if (base.endsWith("/")) {
+                base = base.substring(0, base.length() - 1);
+            }
+            return new AccessTicket(base + pathAndQuery, Instant.now(clock).plus(ttl));
+        } catch (Exception e) {
+            throw new StorageUnavailableException("presign GET failed for " + bucket + "/" + objectKey, e);
         }
     }
 
@@ -141,6 +172,27 @@ public class S3ObjectStorage implements ObjectStorageGateway {
                     .build());
         } catch (Exception e) {
             throw new StorageUnavailableException("delete failed for " + bucket + "/" + objectKey, e);
+        }
+    }
+
+    @Override
+    public List<ObjectInfo> list(String bucket) {
+        List<ObjectInfo> result = new ArrayList<>();
+        try {
+            for (var entry : client.listObjects(ListObjectsArgs.builder()
+                    .bucket(bucket)
+                    .recursive(true)
+                    .build())) {
+                Item item = entry.get();
+                if (!item.isDir()) {
+                    result.add(new ObjectInfo(item.objectName(),
+                        item.lastModified() == null ? null : item.lastModified().toInstant(),
+                        item.size()));
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            throw new StorageUnavailableException("list failed for " + bucket, e);
         }
     }
 

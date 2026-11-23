@@ -8,3 +8,12 @@ spring:
   jpa.hibernate.ddl-auto: validate
   flyway.enabled: true
 management.endpoints.web.exposure.include: health,info
+app:
+  internal:
+    hmac-secret: ${IDENTITY_HMAC_SECRET:replace-with-a-32-byte-minimum-secret}
+  services:
+    submission-url: ${SUBMISSION_SERVICE_URL:http://localhost:8082}
+    exam-grading-url: ${EXAM_GRADING_SERVICE_URL:http://localhost:8083}
+    identity-url: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+  retention:
+    cron: ${RETENTION_CRON:0 0 2 * * *}

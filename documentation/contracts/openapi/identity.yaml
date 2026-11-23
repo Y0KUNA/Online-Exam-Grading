@@ -70,8 +70,301 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/pseudonyms:
+    post:
+      summary: Create pseudonym for a submission
+      description: |
+        Called by Submission service VALIDATE worker. Identity resolves candidateId
+        from the ACTIVE submission binding (E-14); request must NOT contain candidateId.
+        Idempotent by idempotencyKey — replay returns the same pseudonym.
+        Requires service-to-service HMAC headers: X-Service-Caller, X-Service-Request-Id,
+        X-Service-Timestamp, X-Service-Signature (see §8 spec).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PseudonymRequest'
+      responses:
+        '201':
+          description: Pseudonym created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PseudonymResponse'
+        '200':
+          description: Existing pseudonym returned (idempotent replay)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PseudonymResponse'
+        '403':
+          description: Invalid service signature or unknown caller
+        '404':
+          description: BINDING_NOT_FOUND - no ACTIVE binding for submissionId
+        '409':
+          description: PSEUDONYM_GENERATION_FAILED
+  /internal/v1/pseudonyms/lookup:
+    post:
+      summary: Batch lookup pseudonyms by submission IDs
+      description: |
+        Used by Exam & Grading / Result services to resolve phách for assignment
+        lists and grading context. Returns pseudonyms only — never candidate fields.
+        Requires the same service-to-service HMAC headers as POST /internal/v1/pseudonyms.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PseudonymLookupRequest'
+      responses:
+        '200':
+          description: Pseudonyms found (missing submissions are omitted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PseudonymLookupResponse'
+        '403':
+          description: Invalid service signature or caller not in allowlist
+  /internal/v1/users/lookup:
+    post:
+      summary: Batch lookup users by IDs
+      description: |
+        Resolves user display info for Exam & Grading / Result services
+        (assignment lists, grading context). Caller allowlist is narrower than
+        the pseudonym endpoints: only `exam-grading-service` and
+        `result-review-service` are accepted. Never returns password_hash.
+        Requires the same service-to-service HMAC headers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLookupRequest'
+      responses:
+        '200':
+          description: Users found (missing IDs are omitted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLookupResponse'
+        '403':
+          description: Invalid service signature or caller not in allowlist
+  /internal/v1/submissions/{submissionId}/identity:
+    get:
+      summary: Resolve submission to candidate identity + pseudonym
+      description: |
+        Internal identity join (spec 05, FR-019). Returns candidate fields and the
+        phách for one submission via its ACTIVE submission_binding. Used by
+        Submission Service to serve the EXAM_OFFICE-only public
+        `GET /api/v1/submissions/{id}/identity`. `pseudonym` is null until the
+        VALIDATE worker has issued one. Requires the same service-to-service
+        HMAC headers as POST /internal/v1/pseudonyms.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Candidate identity and pseudonym for the submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionIdentityResponse'
+        '403':
+          description: Invalid service signature or caller not in allowlist
+        '404':
+          description: BINDING_NOT_FOUND - no ACTIVE binding for submissionId
+  /internal/v1/submissions/{submissionId}/pseudonym:
+    put:
+      summary: Manual phách edit with PseudonymHistory (D-10)
+      description: |
+        Updates the current pseudonym value for a submission and appends a
+        PseudonymHistory row (old/new value, changed_by, reason). Idempotent when
+        the value is unchanged. UNIQUE(exam_id,value) clash → 409 PSEUDONYM_TAKEN.
+        Requires the same service-to-service HMAC headers.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, reason, changedBy]
+              properties:
+                value: { type: string, maxLength: 64 }
+                reason: { type: string }
+                changedBy: { type: string, maxLength: 100, description: users.user_id of the EXAM_OFFICE actor (D-14) }
+      responses:
+        '200':
+          description: Updated pseudonym
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submissionId: { type: string, format: uuid }
+                  pseudonym: { type: string }
+                  examId: { type: string, format: uuid }
+        '403':
+          description: Invalid service signature or caller not in allowlist
+        '404':
+          description: PSEUDONYM_NOT_FOUND - no pseudonym issued yet
+        '409':
+          description: PSEUDONYM_TAKEN - value already used in this exam
+        '422':
+          description: PSEUDONYM_REQUIRED / REASON_REQUIRED / CHANGED_BY_REQUIRED
+  /internal/v1/identity/submissions/{submissionId}/pseudonym:
+    delete:
+      summary: Purge pseudonym and submission binding (retention)
+      description: |
+        Retention purge command (FR-025, §9.4). Deletes the pseudonym row and the
+        submission_binding row for the submission — the binding is the
+        candidate↔submission mapping and counts as detailed data. Idempotent:
+        replay after deletion returns 200 with deletedPseudonyms=0.
+        Caller allowlist: `result-review-service` only (it orchestrates purge).
+        Requires the same service-to-service HMAC headers.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Purge receipt — DONE even on replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurgePseudonymResponse'
+        '403':
+          description: Invalid service signature or caller not in allowlist
 components:
   schemas:
+    PurgePseudonymResponse:
+      type: object
+      required:
+        - deletedPseudonyms
+        - status
+      properties:
+        deletedPseudonyms:
+          type: integer
+          description: Number of pseudonym rows deleted (0 on replay)
+        status:
+          type: string
+          enum: [DONE]
+    UserLookupRequest:
+      type: object
+      required:
+        - userIds
+      properties:
+        userIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    UserLookupResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserLookupItem'
+    UserLookupItem:
+      type: object
+      required:
+        - userId
+        - username
+        - fullName
+        - role
+        - isActive
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        fullName:
+          type: string
+        role:
+          type: string
+          enum: [EXAM_OFFICE, GRADER, COUNCIL]
+        isActive:
+          type: boolean
+    PseudonymRequest:
+      type: object
+      required:
+        - examId
+        - submissionId
+        - idempotencyKey
+      properties:
+        examId:
+          type: string
+          format: uuid
+        submissionId:
+          type: string
+          format: uuid
+        idempotencyKey:
+          type: string
+          description: e.g. "{submissionId}:pseudonym" - keeps phách stable across reprocess
+    PseudonymResponse:
+      type: object
+      required:
+        - pseudonymId
+        - pseudonym
+        - submissionId
+      properties:
+        pseudonymId:
+          type: string
+          format: uuid
+        pseudonym:
+          type: string
+          description: Generated phách value (CSPRNG, unique per exam)
+        submissionId:
+          type: string
+          format: uuid
+    PseudonymLookupRequest:
+      type: object
+      required:
+        - submissionIds
+      properties:
+        submissionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    PseudonymLookupResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PseudonymLookupItem'
+    PseudonymLookupItem:
+      type: object
+      required:
+        - submissionId
+        - pseudonym
+      properties:
+        submissionId:
+          type: string
+          format: uuid
+        pseudonym:
+          type: string
     SubmissionBindingRequest:
       type: object
       required:
@@ -105,6 +398,28 @@ components:
           type: string
           enum: [ACTIVE, RELEASED]
           description: Binding status
+    SubmissionIdentityResponse:
+      type: object
+      required:
+        - candidateId
+        - candidateNumber
+        - fullName
+      properties:
+        candidateId:
+          type: string
+          format: uuid
+          description: Internal only - never exposed on public endpoints
+        candidateNumber:
+          type: string
+        fullName:
+          type: string
+        className:
+          type: string
+          nullable: true
+        pseudonym:
+          type: string
+          nullable: true
+          description: Phách value; null until VALIDATE issues one
     SubmissionBindingReleaseRequest:
       type: object
       required:

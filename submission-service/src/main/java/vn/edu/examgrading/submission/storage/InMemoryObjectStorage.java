@@ -1,8 +1,11 @@
 package vn.edu.examgrading.submission.storage;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,7 +16,18 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class InMemoryObjectStorage implements ObjectStorageGateway {
 
-    private final Map<String, byte[]> objects = new ConcurrentHashMap<>();
+    private record Entry(byte[] content, Instant lastModified) { }
+
+    private final Map<String, Entry> objects = new ConcurrentHashMap<>();
+    private final Clock clock;
+
+    public InMemoryObjectStorage() {
+        this(Clock.systemUTC());
+    }
+
+    public InMemoryObjectStorage(Clock clock) {
+        this.clock = clock;
+    }
 
     @Override
     public UploadTicket presignPost(String objectKey, long declaredBytes, Duration ttl) {
@@ -29,23 +43,28 @@ public class InMemoryObjectStorage implements ObjectStorageGateway {
     }
 
     @Override
+    public AccessTicket presignGet(String bucket, String objectKey, Duration ttl) {
+        return new AccessTicket("http://memory.test/" + bucket + "/" + objectKey + "?signature=in-memory", Instant.now().plus(ttl));
+    }
+
+    @Override
     public void put(String objectKey, byte[] content, String contentType) {
-        objects.put(scopedKey(null, objectKey), content.clone());
+        objects.put(scopedKey(null, objectKey), new Entry(content.clone(), Instant.now(clock)));
     }
 
     @Override
     public Optional<StoredObject> head(String objectKey) {
-        byte[] content = objects.get(scopedKey(null, objectKey));
-        return content == null ? Optional.empty() : Optional.of(new StoredObject(objectKey, content.length, null));
+        Entry entry = objects.get(scopedKey(null, objectKey));
+        return entry == null ? Optional.empty() : Optional.of(new StoredObject(objectKey, entry.content().length, null));
     }
 
     @Override
     public byte[] get(String objectKey) {
-        byte[] content = objects.get(scopedKey(null, objectKey));
-        if (content == null) {
+        Entry entry = objects.get(scopedKey(null, objectKey));
+        if (entry == null) {
             throw new StorageUnavailableException("object not found: " + objectKey);
         }
-        return content.clone();
+        return entry.content().clone();
     }
 
     @Override
@@ -55,22 +74,22 @@ public class InMemoryObjectStorage implements ObjectStorageGateway {
 
     @Override
     public void put(String bucket, String objectKey, byte[] content, String contentType) {
-        objects.put(scopedKey(bucket, objectKey), content.clone());
+        objects.put(scopedKey(bucket, objectKey), new Entry(content.clone(), Instant.now(clock)));
     }
 
     @Override
     public Optional<StoredObject> head(String bucket, String objectKey) {
-        byte[] content = objects.get(scopedKey(bucket, objectKey));
-        return content == null ? Optional.empty() : Optional.of(new StoredObject(objectKey, content.length, null));
+        Entry entry = objects.get(scopedKey(bucket, objectKey));
+        return entry == null ? Optional.empty() : Optional.of(new StoredObject(objectKey, entry.content().length, null));
     }
 
     @Override
     public byte[] get(String bucket, String objectKey) {
-        byte[] content = objects.get(scopedKey(bucket, objectKey));
-        if (content == null) {
+        Entry entry = objects.get(scopedKey(bucket, objectKey));
+        if (entry == null) {
             throw new StorageUnavailableException("object not found: " + bucket + "/" + objectKey);
         }
-        return content.clone();
+        return entry.content().clone();
     }
 
     @Override
@@ -78,7 +97,21 @@ public class InMemoryObjectStorage implements ObjectStorageGateway {
         objects.remove(scopedKey(bucket, objectKey));
     }
 
+    @Override
+    public List<ObjectInfo> list(String bucket) {
+        String prefix = scopedKey(bucket, "");
+        List<ObjectInfo> result = new ArrayList<>();
+        for (Map.Entry<String, Entry> e : objects.entrySet()) {
+            String scoped = e.getKey();
+            if (scoped.startsWith(prefix)) {
+                String key = scoped.substring(prefix.length());
+                result.add(new ObjectInfo(key, e.getValue().lastModified(), e.getValue().content().length));
+            }
+        }
+        return result;
+    }
+
     private static String scopedKey(String bucket, String objectKey) {
-        return bucket == null ? objectKey : bucket + "\u0001" + objectKey;
+        return bucket == null ? objectKey : bucket + "" + objectKey;
     }
 }

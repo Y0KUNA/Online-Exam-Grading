@@ -15,3 +15,9 @@ dependencies {
     testImplementation 'org.testcontainers:postgresql:1.20.4'
     testImplementation 'org.testcontainers:jdbc:1.20.4'
 }
+
+// Same TZ fix as bootRun: the PG JDBC driver sends the JVM default zone and
+// Postgres rejects "Asia/Saigon".
+test {
+    systemProperty 'user.timezone', 'UTC'
+}

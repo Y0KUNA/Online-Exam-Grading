@@ -17,9 +17,16 @@ paths:
   /api/v1/exams/{examId}/submissions:
     parameters: [{ name: examId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
-      summary: Office submission status projection for an exam
+      summary: Office submission status projection for an exam (EXAM_OFFICE only)
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
       responses:
-        '200': { description: Submission list }
+        '200':
+          description: '{items:[{submissionId,examId,status,pageCount?,progress,error?,updatedAt}],nextCursor:string|null}'
+        '400': { description: Invalid status, cursor, or limit }
+        '403': { description: Role is not EXAM_OFFICE }
     post:
       summary: Initialize an ORIGINAL PDF upload (EXAM_OFFICE)
       requestBody:
@@ -32,6 +39,63 @@ paths:
       responses:
         '201': { description: Submission id and presigned POST form routed through Gateway }
         '422': { description: Invalid PDF metadata }
+  /api/v1/submissions/{submissionId}:
+    parameters: [{ name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      summary: Submission status projection (EXAM_OFFICE only, E-06)
+      responses:
+        '200':
+          description: '{submissionId,examId,status,pageCount?,progress,error?:{code,message},updatedAt}'
+        '403': { description: Role is not EXAM_OFFICE }
+        '404': { description: Submission not found }
+  /api/v1/submissions/{submissionId}/identity:
+    parameters: [{ name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      summary: Candidate identity join for a submission (EXAM_OFFICE only, FR-019)
+      description: Returns {candidateNumber,fullName,className,pseudonym}; audited on every call.
+      responses:
+        '200': { description: Identity projection without candidateId }
+        '403': { description: Role is not EXAM_OFFICE }
+        '404': { description: Submission or binding not found }
+  /api/v1/exams/{examId}/submissions/events:
+    parameters: [{ name: examId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      summary: SSE stream of submission-status events for an exam (EXAM_OFFICE only)
+      description: 'text/event-stream; event `submission-status` data {submissionId,status,progress,updatedAt}; id = event sequence; supports Last-Event-ID; heartbeat ~15s.'
+      responses:
+        '200': { description: SSE stream }
+        '400': { description: Invalid Last-Event-ID }
+        '403': { description: Role is not EXAM_OFFICE }
+  /api/v1/submissions/{submissionId}/files:
+    parameters: [{ name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      summary: File version list (EXAM_OFFICE only, §4.4)
+      description: 'Items {type,version,isCurrent,sizeBytes,sha256?,createdAt}; never returns object keys or URLs.'
+      responses:
+        '200': { description: '{items:[...]}' }
+        '403': { description: Role is not EXAM_OFFICE }
+        '404': { description: Submission not found }
+  /api/v1/submissions/{submissionId}/pseudonym:
+    parameters: [{ name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }]
+    put:
+      summary: Manual phách edit (EXAM_OFFICE only, D-10)
+      description: Body {pseudonym,reason}; reason mandatory. Rejected once FINALIZED; appends PseudonymHistory in Identity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pseudonym, reason]
+              properties:
+                pseudonym: { type: string }
+                reason: { type: string }
+      responses:
+        '200': { description: '{submissionId,pseudonym}' }
+        '403': { description: Role is not EXAM_OFFICE }
+        '404': { description: Submission not found }
+        '409': { description: Already FINALIZED, no pseudonym yet, or value taken }
+        '422': { description: Missing pseudonym or reason }
   /api/v1/submissions/{submissionId}/complete:
     parameters: [{ name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }]
     post:

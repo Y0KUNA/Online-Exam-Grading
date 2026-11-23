@@ -1,0 +1,244 @@
+openapi: 3.0.3
+info:
+  title: Online Exam Grading Submission Service
+  version: 0.1.0
+  description: Internal endpoints for Submission service. Not exposed through Gateway.
+paths:
+  /internal/v1/submissions/{submissionId}:
+    get:
+      summary: Get submission status snapshot
+      description: |
+        Returns the current status/version of a submission. Callers are
+        Exam & Grading and Result/Review services (service credential).
+        Requires service-to-service HMAC headers: X-Service-Caller,
+        X-Service-Request-Id, X-Service-Timestamp, X-Service-Signature.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Submission found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionSnapshot'
+        '403':
+          description: Invalid service signature or caller not in allowlist
+        '404':
+          description: NOT_FOUND
+  /internal/v1/submissions/{submissionId}/files/{type}/access:
+    post:
+      summary: Presigned GET for the anonymized file
+      description: |
+        Issues a 5-minute presigned GET URL for the current ANONYMIZED ExamFile.
+        The calling service already authorized the end user; this endpoint never
+        grants ORIGINAL (403 ORIGINAL_FORBIDDEN). While the anonymized copy is
+        being overwritten during reprocess (VALIDATING/ANONYMIZING), returns
+        409 FILE_NOT_READY (§4.6). Callers: exam-grading-service,
+        result-review-service.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [ORIGINAL, ANONYMIZED]
+      responses:
+        '200':
+          description: Access ticket issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileAccessResponse'
+        '403':
+          description: ORIGINAL_FORBIDDEN or invalid service signature
+        '404':
+          description: NOT_FOUND - submission missing or no current ANONYMIZED file
+        '409':
+          description: FILE_NOT_READY - anonymized copy is being replaced
+  /internal/v1/submissions/{submissionId}/finalize:
+    post:
+      summary: Finalize a completed submission (T20)
+      description: |
+        Called by the Result/Review saga. Idempotent per submissionId: an
+        already-FINALIZED submission returns 200 unchanged (E-10).
+        finalized_at/retention_deadline are written only on the first finalize
+        and never recomputed (D-15); retention_deadline = finalized_at + 1
+        calendar year (UTC). Caller: result-review-service only.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizeRequest'
+      responses:
+        '200':
+          description: Finalized (or already finalized - idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinalizeResponse'
+        '403':
+          description: Invalid service signature or caller not allowed
+        '404':
+          description: NOT_FOUND
+        '409':
+          description: ILLEGAL_TRANSITION - submission is not COMPLETED
+  /internal/v1/submissions/{submissionId}/status:
+    post:
+      summary: Transition submission status
+      description: |
+        Single entry point for all submission state transitions (T01-T28).
+        Optimistic concurrency: expectedStatus mismatch or a lost update race
+        returns 409 STATUS_VERSION_CONFLICT. Repeating a transition whose
+        destination is already the current status returns 200 idempotent.
+        reasonCode is stored on failure_code when targeting FAILED and cleared
+        when leaving FAILED; finalizedAt applies only when targeting FINALIZED.
+        Callers: exam-grading-service, result-review-service, submission-worker.
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusTransitionRequest'
+      responses:
+        '200':
+          description: Transition applied (or idempotent replay)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusTransitionResponse'
+        '403':
+          description: Invalid service signature or caller not in allowlist
+        '404':
+          description: NOT_FOUND
+        '409':
+          description: STATUS_VERSION_CONFLICT or ILLEGAL_TRANSITION
+components:
+  schemas:
+    SubmissionSnapshot:
+      type: object
+      required:
+        - submissionId
+        - examId
+        - status
+        - version
+      properties:
+        submissionId:
+          type: string
+          format: uuid
+        examId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [UPLOADING, UPLOADED, VALIDATING, ANONYMIZING, READY_FOR_GRADING, GRADING, REVIEW_REQUIRED, COMPLETED, FINALIZED, FAILED]
+        version:
+          type: integer
+          description: Optimistic-lock version, incremented on every transition
+    FileAccessResponse:
+      type: object
+      required:
+        - url
+        - expiresAt
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Presigned GET URL through the Gateway /storage pass-through (5 minutes)
+        expiresAt:
+          type: string
+          format: date-time
+    FinalizeRequest:
+      type: object
+      properties:
+        finalizedAt:
+          type: string
+          format: date-time
+          description: Optional; defaults to server now. First finalize only.
+        retentionDeadline:
+          type: string
+          format: date-time
+          description: Accepted for forward compatibility; server computes finalized_at + 1 year (D-15/T20).
+        idempotencyKey:
+          type: string
+    FinalizeResponse:
+      type: object
+      required:
+        - status
+        - version
+      properties:
+        status:
+          type: string
+          enum: [FINALIZED]
+        version:
+          type: integer
+    StatusTransitionRequest:
+      type: object
+      required:
+        - newStatus
+      properties:
+        expectedStatus:
+          type: string
+          description: Optional optimistic check against current status
+        newStatus:
+          type: string
+          enum: [UPLOADING, UPLOADED, VALIDATING, ANONYMIZING, READY_FOR_GRADING, GRADING, REVIEW_REQUIRED, COMPLETED, FINALIZED, FAILED]
+        reasonCode:
+          type: string
+          description: e.g. UPLOAD_ABANDONED, SCORE_DIFFERENCE, GRADER_FLAG, REVIEW_RESOLVED
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        finalizedAt:
+          type: string
+          format: date-time
+        idempotencyKey:
+          type: string
+    StatusTransitionResponse:
+      type: object
+      required:
+        - submissionId
+        - status
+        - version
+      properties:
+        submissionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        version:
+          type: integer
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error code or message

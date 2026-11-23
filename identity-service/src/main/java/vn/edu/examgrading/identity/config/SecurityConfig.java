@@ -73,7 +73,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register/grader", "/.well-known/jwks.json", "/actuator/health", "/actuator/info")
                 .permitAll()
                 // These service endpoints verify their own short-lived HMAC signature.
-                .requestMatchers("/internal/v1/pseudonyms/**").permitAll()
+                .requestMatchers("/internal/v1/pseudonyms/**", "/internal/v1/users/**", "/internal/v1/identity/**", "/internal/v1/submissions/**").permitAll()
                 .anyRequest().authenticated())
                 .oauth2ResourceServer(
                         oauth -> oauth.jwt(jwt -> jwt.decoder(decoder).jwtAuthenticationConverter(roleConverter())));

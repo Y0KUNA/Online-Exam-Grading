@@ -29,3 +29,9 @@ dependencies {
 bootRun {
     jvmArgs '-Duser.timezone=UTC'
 }
+
+// Same TZ fix as bootRun: the PG JDBC driver sends the JVM default zone and
+// Postgres rejects "Asia/Saigon".
+test {
+    systemProperty 'user.timezone', 'UTC'
+}

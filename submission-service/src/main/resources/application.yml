@@ -36,3 +36,14 @@ app:
     max-render-pixels: ${PDF_MAX_RENDER_PIXELS:40000000}
     max-page-points: ${PDF_MAX_PAGE_POINTS:14400}
     job-timeout-seconds: ${PDF_JOB_TIMEOUT_SECONDS:120}
+  jobs:
+    # Ops schedulers (Ticket 07). Cron exprs are Spring 6-field (sec min hour …).
+    pool-size: ${JOBS_POOL_SIZE:4}
+    # UPLOADING → FAILED/UPLOAD_ABANDONED sweep (spec §10: ABANDONED_SCAN_CRON).
+    upload-cleanup-cron: ${ABANDONED_SCAN_CRON:0 */5 * * * *}
+    # Orphan object scan in the original bucket (spec §10: ORPHAN_SCAN_CRON).
+    orphan-cleanup-cron: ${ORPHAN_SCAN_CRON:0 0 * * * *}
+    orphan-grace-minutes: ${ORPHAN_GRACE_MINUTES:60}
+    # QUEUED ProcessingJob reconciler — republish lost messages (§8).
+    reconcile-cron: ${RECONCILE_CRON:0 */5 * * * *}
+    reconcile-stale-minutes: ${RECONCILE_STALE_MINUTES:10}

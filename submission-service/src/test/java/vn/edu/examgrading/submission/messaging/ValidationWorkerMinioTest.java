@@ -20,7 +20,6 @@ import vn.edu.examgrading.submission.client.IdentityClient;
 import vn.edu.examgrading.submission.client.ResultClient;
 import vn.edu.examgrading.submission.domain.Submission;
 import vn.edu.examgrading.submission.domain.SubmissionStatus;
-import vn.edu.examgrading.submission.messaging.AnonymizeJobMessage;
 import vn.edu.examgrading.submission.messaging.ValidationWorker.ValidateJobMessage;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository;
 import vn.edu.examgrading.submission.repository.ProcessingJobRepository;
@@ -92,7 +91,7 @@ class ValidationWorkerMinioTest {
     private void stubSubmission() {
         Submission submission = new Submission(
             submissionId, examId, templateId, SubmissionStatus.UPLOADED,
-            1, 0, null, 1024L, null, objectKey, null, 0, Instant.now());
+            1, 0, null, 1024L, null, null, objectKey, null, 0, Instant.now());
         when(submissionRepo.findById(submissionId)).thenReturn(Optional.of(submission));
         // T05: UPLOADED → VALIDATING on receipt — stubbed so strict stubbing does
         // not flag the FAILED transition stub below as an argument mismatch.

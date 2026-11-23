@@ -65,11 +65,19 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
     }
 
     @Override
+    public boolean existsUploadingWithObjectKey(String objectKey) {
+        Integer result = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM submission WHERE object_key = ? AND status = 'UPLOADING'",
+            Integer.class, objectKey);
+        return result != null && result > 0;
+    }
+
+    @Override
     public Optional<Submission> findById(UUID submissionId) {
         String sql = """
             SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
-                   declared_file_size_bytes, file_size_bytes, object_key, failure_code,
+                   declared_file_size_bytes, file_size_bytes, page_count, object_key, failure_code,
                    version, updated_at
             FROM submission
             WHERE submission_id = ?
@@ -83,13 +91,40 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
         String sql = """
             SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
-                   declared_file_size_bytes, file_size_bytes, object_key, failure_code,
+                   declared_file_size_bytes, file_size_bytes, page_count, object_key, failure_code,
                    version, updated_at
             FROM submission
             WHERE exam_id = ?
             ORDER BY upload_expires_at DESC
             """;
         return jdbcTemplate.query(sql, submissionRowMapper(), examId);
+    }
+
+    @Override
+    public List<Submission> findByExamPage(UUID examId, SubmissionStatus status,
+            Instant cursorUpdatedAt, UUID cursorSubmissionId, int limit) {
+        StringBuilder sql = new StringBuilder("""
+            SELECT submission_id, exam_id, template_id, status,
+                   current_file_version, progress, upload_expires_at,
+                   declared_file_size_bytes, file_size_bytes, page_count, object_key, failure_code,
+                   version, updated_at
+            FROM submission
+            WHERE exam_id = ?
+            """);
+        List<Object> args = new java.util.ArrayList<>();
+        args.add(examId);
+        if (status != null) {
+            sql.append(" AND status = ?");
+            args.add(status.name());
+        }
+        if (cursorUpdatedAt != null) {
+            sql.append(" AND (updated_at, submission_id) < (?, ?::uuid)");
+            args.add(toOffsetDateTimeUtc(cursorUpdatedAt));
+            args.add(cursorSubmissionId);
+        }
+        sql.append(" ORDER BY updated_at DESC, submission_id DESC LIMIT ?");
+        args.add(limit);
+        return jdbcTemplate.query(sql.toString(), submissionRowMapper(), args.toArray());
     }
 
     @Override
@@ -107,12 +142,23 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
         String sql = """
             SELECT submission_id, exam_id, template_id, status,
                    current_file_version, progress, upload_expires_at,
-                   declared_file_size_bytes, object_key, failure_code,
+                   declared_file_size_bytes, file_size_bytes, page_count, object_key, failure_code,
                    version, updated_at
             FROM submission
             WHERE status = 'UPLOADING' AND upload_expires_at < ?
             """;
         return jdbcTemplate.query(sql, submissionRowMapper(), toOffsetDateTimeUtc(now));
+    }
+
+    @Override
+    public int failUploading(UUID submissionId, String failureCode) {
+        String sql = """
+            UPDATE submission
+            SET status = 'FAILED', failure_code = ?, progress = 0,
+                version = version + 1, updated_at = now()
+            WHERE submission_id = ? AND status = 'UPLOADING'
+            """;
+        return jdbcTemplate.update(sql, failureCode, submissionId);
     }
 
     private RowMapper<Submission> submissionRowMapper() {
@@ -126,6 +172,7 @@ public class JdbcSubmissionRepository implements SubmissionRepositoryMarker {
             toInstant(rs.getObject("upload_expires_at", OffsetDateTime.class)),
             (Long) rs.getObject("declared_file_size_bytes"),
             (Long) rs.getObject("file_size_bytes"),
+            rs.getObject("page_count", Integer.class),
             rs.getString("object_key"),
             rs.getString("failure_code"),
             rs.getInt("version"),

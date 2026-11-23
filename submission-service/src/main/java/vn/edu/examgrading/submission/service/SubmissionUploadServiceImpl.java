@@ -1,17 +1,21 @@
 package vn.edu.examgrading.submission.service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,6 +27,9 @@ import vn.edu.examgrading.submission.domain.SubmissionStatus;
 import vn.edu.examgrading.submission.dto.CompleteSubmissionResponse;
 import vn.edu.examgrading.submission.dto.InitSubmissionRequest;
 import vn.edu.examgrading.submission.dto.InitSubmissionResponse;
+import vn.edu.examgrading.submission.dto.SubmissionIdentity;
+import vn.edu.examgrading.submission.dto.SubmissionPageResponse;
+import vn.edu.examgrading.submission.dto.UpdatePseudonymRequest;
 import vn.edu.examgrading.submission.repository.ExamFileRepository;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository;
 import vn.edu.examgrading.submission.repository.ProcessingJobRepository;
@@ -46,6 +53,8 @@ import vn.edu.examgrading.submission.messaging.SubmissionOutbox;
 public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
 
     private static final String PDF_CONTENT_TYPE = "application/pdf";
+    private static final int DEFAULT_PAGE_LIMIT = 50;
+    private static final int MAX_PAGE_LIMIT = 200;
     private static final Logger log = LoggerFactory.getLogger(SubmissionUploadServiceImpl.class);
 
     private final SubmissionRepositoryMarker submissionRepo;
@@ -60,6 +69,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
     private final IdentityClient identityClient;
     private final RabbitTemplate rabbitTemplate;
     private final SubmissionOutbox outbox;
+    private final JdbcTemplate jdbcTemplate;
 
     public SubmissionUploadServiceImpl(
             SubmissionRepositoryMarker submissionRepo,
@@ -73,6 +83,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
             IdentityClient identityClient,
             RabbitTemplate rabbitTemplate,
             SubmissionOutbox outbox,
+            JdbcTemplate jdbcTemplate,
             @Value("${app.upload.ttl-minutes:10}") long uploadTtlMinutes) {
         this.submissionRepo = submissionRepo;
         this.templateRepo = templateRepo;
@@ -85,6 +96,7 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
         this.identityClient = identityClient;
         this.rabbitTemplate = rabbitTemplate;
         this.outbox = outbox;
+        this.jdbcTemplate = jdbcTemplate;
         this.uploadTtl = Duration.ofMinutes(uploadTtlMinutes);
     }
 
@@ -142,37 +154,211 @@ public class SubmissionUploadServiceImpl implements SubmissionServiceMarker {
     }
 
     @Override
-    public List<Map<String, Object>> listForExam(UUID examId) {
-        return submissionRepo.findByExam(examId).stream()
-            .map(this::submissionToMap)
+    public SubmissionPageResponse listForExam(UUID examId, String status, String cursor, Integer limit) {
+        SubmissionStatus statusFilter = parseStatusFilter(status);
+        int pageLimit = parseLimit(limit);
+        CursorPosition position = decodeCursor(cursor);
+
+        // Fetch one extra row to know whether a next page exists (D-06).
+        List<Submission> rows = submissionRepo.findByExamPage(examId, statusFilter,
+            position == null ? null : position.updatedAt(),
+            position == null ? null : position.submissionId(),
+            pageLimit + 1);
+        boolean hasMore = rows.size() > pageLimit;
+        List<Submission> page = hasMore ? rows.subList(0, pageLimit) : rows;
+        String nextCursor = hasMore && !page.isEmpty()
+            ? encodeCursor(page.get(page.size() - 1))
+            : null;
+        List<Map<String, Object>> items = page.stream()
+            .map(this::submissionToDetailMap)
             .collect(Collectors.toList());
+        return new SubmissionPageResponse(items, nextCursor);
     }
 
     @Override
     public Map<String, Object> detail(UUID submissionId) {
         return submissionRepo.findById(submissionId)
-            .map(this::submissionToMap)
+            .map(this::submissionToDetailMap)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE));
     }
 
-    private Map<String, Object> submissionToMap(Submission s) {
-        // Uploading submissions legitimately have null fileSizeBytes/failureCode.
-        // Map.of/Map.entry rejects null and used to turn the list API into HTTP 500.
+    /**
+     * Public projection shared by detail and list items (spec 05):
+     * {@code {submissionId,examId,status,pageCount?,progress,error?:{code,message},updatedAt}}.
+     * Internal fields (objectKey/templateId/version/…) stay out (E-06: EXAM_OFFICE only).
+     */
+    private Map<String, Object> submissionToDetailMap(Submission s) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("submissionId", s.submissionId());
         result.put("examId", s.examId());
-        result.put("templateId", s.templateId());
         result.put("status", s.status().name());
-        result.put("currentFileVersion", s.currentFileVersion());
+        if (s.pageCount() != null) {
+            result.put("pageCount", s.pageCount());
+        }
         result.put("progress", s.progress());
-        result.put("uploadExpiresAt", s.uploadExpiresAt());
-        result.put("declaredFileSizeBytes", s.declaredFileSizeBytes());
-        result.put("fileSizeBytes", s.fileSizeBytes());
-        result.put("objectKey", s.objectKey());
-        result.put("failureCode", s.failureCode());
-        result.put("version", s.version());
+        if (s.failureCode() != null) {
+            result.put("error", Map.of("code", s.failureCode(), "message", s.failureCode()));
+        }
         result.put("updatedAt", s.updatedAt());
         return result;
+    }
+
+    @Override
+    public Map<String, Object> identity(UUID submissionId) {
+        Submission submission = submissionRepo.findById(submissionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE));
+        SubmissionIdentity identity;
+        try {
+            identity = identityClient.getSubmissionIdentity(submissionId);
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE);
+            }
+            throw e;
+        }
+        if (identity == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE);
+        }
+
+        // FR-019: ghép phách is a sensitive join — always audit the access.
+        // Detail carries no PII (candidate fields/pseudonym stay out of the log).
+        jdbcTemplate.update(
+            "insert into audit_log(id,actor_id,action,entity_type,entity_id,detail) values (?,null,'SUBMISSION_IDENTITY_VIEWED','submission',?,?::jsonb)",
+            UUID.randomUUID(), submissionId,
+            "{\"examId\":\"" + submission.examId() + "\"}");
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("candidateNumber", identity.candidateNumber());
+        result.put("fullName", identity.fullName());
+        result.put("className", identity.className());
+        result.put("pseudonym", identity.pseudonym());
+        return result;
+    }
+
+    private static final Pattern JWT_SUB = Pattern.compile("\"sub\"\\s*:\\s*\"([^\"]+)\"");
+
+    @Override
+    public Map<String, Object> updatePseudonym(UUID submissionId, UpdatePseudonymRequest request, String authorization) {
+        Submission submission = submissionRepo.findById(submissionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE));
+        // Spec 10 §4.1: chỉ khi chưa FINALIZED.
+        if (submission.status() == SubmissionStatus.FINALIZED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "INVALID_STATE");
+        }
+        if (request == null || request.pseudonym() == null || request.pseudonym().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "PSEUDONYM_REQUIRED");
+        }
+        if (request.reason() == null || request.reason().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "REASON_REQUIRED");
+        }
+
+        try {
+            identityClient.updatePseudonym(submissionId, request.pseudonym().trim(),
+                request.reason(), actorIdFromJwt(authorization));
+        } catch (ResponseStatusException e) {
+            // No pseudonym issued yet (pre-VALIDATE) → conflict; PSEUDONYM_TAKEN
+            // (409) propagates with its own reason.
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "INVALID_STATE");
+            }
+            throw e;
+        }
+
+        jdbcTemplate.update(
+            "insert into audit_log(id,actor_id,action,entity_type,entity_id,detail) values (?,null,'SUBMISSION_PSEUDONYM_CHANGED','submission',?,?::jsonb)",
+            UUID.randomUUID(), submissionId,
+            "{\"examId\":\"" + submission.examId() + "\"}");
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("submissionId", submissionId);
+        result.put("pseudonym", request.pseudonym().trim());
+        return result;
+    }
+
+    /** Best-effort {@code sub} claim read; the Gateway already verified the JWT. */
+    private String actorIdFromJwt(String authorization) {
+        try {
+            if (authorization != null && authorization.startsWith("Bearer ")) {
+                String[] parts = authorization.substring(7).split("\\.");
+                if (parts.length >= 2) {
+                    String payload = new String(
+                        Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+                    var matcher = JWT_SUB.matcher(payload);
+                    if (matcher.find()) {
+                        return matcher.group(1);
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) { }
+        return "EXAM_OFFICE";
+    }
+
+    @Override
+    public Map<String, Object> files(UUID submissionId) {
+        submissionRepo.findById(submissionId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, SubmissionError.INVALID_STATE));
+        List<Map<String, Object>> items = examFileRepo.findAllBySubmission(submissionId).stream()
+            .map(f -> {
+                Map<String, Object> m = new LinkedHashMap<String, Object>();
+                m.put("type", f.type());
+                m.put("version", f.version());
+                m.put("isCurrent", f.isCurrent());
+                if (f.sizeBytes() != null) {
+                    m.put("sizeBytes", f.sizeBytes());
+                }
+                if (f.sha256() != null) {
+                    m.put("sha256", f.sha256());
+                }
+                m.put("createdAt", f.createdAt());
+                return m;
+            })
+            .collect(Collectors.toList());
+        return Map.of("items", items);
+    }
+
+    private SubmissionStatus parseStatusFilter(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return SubmissionStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_STATUS");
+        }
+    }
+
+    private int parseLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_PAGE_LIMIT;
+        }
+        if (limit < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_LIMIT");
+        }
+        return Math.min(limit, MAX_PAGE_LIMIT);
+    }
+
+    private record CursorPosition(Instant updatedAt, UUID submissionId) { }
+
+    // Opaque cursor = base64url("<updatedAt ISO>|<submissionId>"). ISO-8601 keeps
+    // full timestamp precision so keyset pagination does not skip/duplicate rows.
+    private String encodeCursor(Submission s) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+            (s.updatedAt() + "|" + s.submissionId()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private CursorPosition decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            int sep = decoded.lastIndexOf('|');
+            return new CursorPosition(
+                Instant.parse(decoded.substring(0, sep)),
+                UUID.fromString(decoded.substring(sep + 1)));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_CURSOR");
+        }
     }
 
     @Override

@@ -1,0 +1,105 @@
+{
+  "group": {
+    "default": {
+      "targets": [
+        "result-review-service",
+        "submission-service",
+        "api-gateway",
+        "exam-grading-service",
+        "identity-service"
+      ]
+    }
+  },
+  "target": {
+    "api-gateway": {
+      "context": "D:\\Thư mục mới (3)\\Online-Exam-Grading",
+      "dockerfile": "D:\\Thư mục mới (3)\\Online-Exam-Grading\\Dockerfile",
+      "args": {
+        "SERVICE": "api-gateway"
+      },
+      "labels": {
+        "com.docker.compose.project": "online-exam-grading",
+        "com.docker.compose.service": "api-gateway",
+        "com.docker.compose.version": "5.7.0"
+      },
+      "tags": [
+        "online-exam-grading-api-gateway"
+      ],
+      "output": [
+        "type=docker"
+      ]
+    },
+    "exam-grading-service": {
+      "context": "D:\\Thư mục mới (3)\\Online-Exam-Grading",
+      "dockerfile": "D:\\Thư mục mới (3)\\Online-Exam-Grading\\Dockerfile",
+      "args": {
+        "SERVICE": "exam-grading-service"
+      },
+      "labels": {
+        "com.docker.compose.project": "online-exam-grading",
+        "com.docker.compose.service": "exam-grading-service",
+        "com.docker.compose.version": "5.7.0"
+      },
+      "tags": [
+        "online-exam-grading-exam-grading-service"
+      ],
+      "output": [
+        "type=docker"
+      ]
+    },
+    "identity-service": {
+      "context": "D:\\Thư mục mới (3)\\Online-Exam-Grading",
+      "dockerfile": "D:\\Thư mục mới (3)\\Online-Exam-Grading\\Dockerfile",
+      "args": {
+        "SERVICE": "identity-service"
+      },
+      "labels": {
+        "com.docker.compose.project": "online-exam-grading",
+        "com.docker.compose.service": "identity-service",
+        "com.docker.compose.version": "5.7.0"
+      },
+      "tags": [
+        "online-exam-grading-identity-service"
+      ],
+      "output": [
+        "type=docker"
+      ]
+    },
+    "result-review-service": {
+      "context": "D:\\Thư mục mới (3)\\Online-Exam-Grading",
+      "dockerfile": "D:\\Thư mục mới (3)\\Online-Exam-Grading\\Dockerfile",
+      "args": {
+        "SERVICE": "result-review-service"
+      },
+      "labels": {
+        "com.docker.compose.project": "online-exam-grading",
+        "com.docker.compose.service": "result-review-service",
+        "com.docker.compose.version": "5.7.0"
+      },
+      "tags": [
+        "online-exam-grading-result-review-service"
+      ],
+      "output": [
+        "type=docker"
+      ]
+    },
+    "submission-service": {
+      "context": "D:\\Thư mục mới (3)\\Online-Exam-Grading",
+      "dockerfile": "D:\\Thư mục mới (3)\\Online-Exam-Grading\\Dockerfile",
+      "args": {
+        "SERVICE": "submission-service"
+      },
+      "labels": {
+        "com.docker.compose.project": "online-exam-grading",
+        "com.docker.compose.service": "submission-service",
+        "com.docker.compose.version": "5.7.0"
+      },
+      "tags": [
+        "online-exam-grading-submission-service"
+      ],
+      "output": [
+        "type=docker"
+      ]
+    }
+  }
+}

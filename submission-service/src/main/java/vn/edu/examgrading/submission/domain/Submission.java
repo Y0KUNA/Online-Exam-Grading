@@ -17,6 +17,7 @@ public record Submission(
         Instant uploadExpiresAt,
         Long declaredFileSizeBytes,
         Long fileSizeBytes,
+        Integer pageCount,
         String objectKey,
         String failureCode,
         int version,

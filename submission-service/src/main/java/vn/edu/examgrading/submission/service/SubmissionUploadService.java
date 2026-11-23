@@ -85,8 +85,9 @@ public class SubmissionUploadService {
         // 4. Sign the presigned POST ticket (rollback here leaves no orphan row).
         ObjectStorageGateway.UploadTicket ticket = gateway.presignPost(objectKey, declared, uploadTtl);
 
-        jdbc.update("insert into submission_event (submission_id, status, progress) values (?,?,0)",
-                submissionId, "UPLOADING");
+        jdbc.update("insert into submission_event (submission_id, exam_id, status, progress) "
+                + "select submission_id, exam_id, 'UPLOADING', 0 from submission where submission_id=?",
+                submissionId);
 
         return new InitSubmissionResponse(
                 submissionId.toString(),

@@ -76,6 +76,15 @@ public class JdbcPaperTemplateRepository implements PaperTemplateRepository {
                     new Region(crop.path("x").asDouble(), crop.path("y").asDouble(),
                         crop.path("width").asDouble(), crop.path("height").asDouble())));
             }
+            List<PaperTemplateRepository.CutRegion> cutRegions = new java.util.ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode cut : root.path("cuts")) {
+                cutRegions.add(new PaperTemplateRepository.CutRegion(cut.path("page").asInt(),
+                    new Region(cut.path("x").asDouble(), cut.path("y").asDouble(),
+                        cut.path("width").asDouble(), cut.path("height").asDouble())));
+            }
+            if (cutRegions.isEmpty()) {
+                cutRegions.add(new PaperTemplateRepository.CutRegion(maskPage, maskRegion));
+            }
             List<RedactionRegion> redactionRegions = new java.util.ArrayList<>();
             for (com.fasterxml.jackson.databind.JsonNode redaction : root.path("redactions")) {
                 redactionRegions.add(new RedactionRegion(redaction.path("page").asInt(),
@@ -83,7 +92,7 @@ public class JdbcPaperTemplateRepository implements PaperTemplateRepository {
                         redaction.path("width").asDouble(), redaction.path("height").asDouble())));
             }
             return new MaskRegions(maskRegion, printRegion, fontName, fontSize, align, maskPage, templatePageCount,
-                List.copyOf(cropRegions), List.copyOf(redactionRegions));
+                List.copyOf(cropRegions), List.copyOf(cutRegions), List.copyOf(redactionRegions));
         } catch (Exception e) {
             throw new IllegalStateException("Invalid mask jsonb for template", e);
         }

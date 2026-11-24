@@ -62,6 +62,7 @@ public class PaperTemplateController {
         if (crops.stream().map(crop -> integer(crop, "order")).distinct().count() != crops.size()) {
             throw new IllegalArgumentException("Thứ tự các trang cắt không được trùng nhau.");
         }
+        validateCutRegions(masks, crops);
         List<Map<String, Object>> redactions = json.convertValue(data.get("redactions"), new TypeReference<>() {});
         if (redactions == null) redactions = List.of();
         for (Map<String, Object> redaction : redactions) validateRegion(redaction, pageInfo.pageCount(), "vùng che thường");
@@ -96,6 +97,28 @@ public class PaperTemplateController {
         if (integer(crop, "order") < 1) throw new IllegalArgumentException("Thứ tự trang cắt không hợp lệ.");
     }
 
+    private static void validateCutRegions(List<Map<String, Object>> cuts, List<Map<String, Object>> crops) {
+        final BigDecimal tolerance = new BigDecimal("0.005");
+        for (Map<String, Object> cut : cuts) {
+            BigDecimal y = number(cut, "y");
+            BigDecimal bottom = y.add(number(cut, "height"));
+            if (y.compareTo(tolerance) > 0 || bottom.compareTo(BigDecimal.ONE.subtract(tolerance)) < 0) {
+                throw new IllegalArgumentException("Vùng cắt phách phải kéo dài từ mép trên đến mép dưới trang PDF.");
+            }
+            int page = integer(cut, "page");
+            BigDecimal left = number(cut, "x");
+            BigDecimal right = left.add(number(cut, "width"));
+            boolean touchesCropEdge = crops.stream().filter(crop -> integer(crop, "page") == page).anyMatch(crop -> {
+                BigDecimal cropLeft = number(crop, "x");
+                BigDecimal cropRight = cropLeft.add(number(crop, "width"));
+                return left.compareTo(cropLeft.add(tolerance)) <= 0 || right.compareTo(cropRight.subtract(tolerance)) >= 0;
+            });
+            if (!touchesCropEdge) {
+                throw new IllegalArgumentException("Vùng cắt phách phải chạm mép của một vùng trang đã tách.");
+            }
+        }
+    }
+
     /**
      * PageMasker currently rasterizes one rectangle and writes the generated
      * pseudonym inside it.  The editor may collect several rectangles, so keep
@@ -128,7 +151,7 @@ public class PaperTemplateController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("mask", mask); result.put("print", print); result.put("maskPage", maskPage);
         result.put("maskCount", masks.size()); result.put("templatePageCount", templatePageCount);
-        result.put("crops", crops); result.put("redactions", redactions);
+        result.put("crops", crops); result.put("cuts", masks); result.put("redactions", redactions);
         return result;
     }
 

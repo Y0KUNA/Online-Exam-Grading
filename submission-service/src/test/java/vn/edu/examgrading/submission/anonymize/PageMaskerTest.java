@@ -19,6 +19,7 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.MaskRegions;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CropRegion;
+import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CutRegion;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.Region;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -169,12 +170,15 @@ class PageMaskerTest {
     void landscapeSheetSidesAreSplitInReadingOrder() throws Exception {
         Region detachableStrip = new Region(0.9, 0, 0.1, 1);
         MaskRegions layout = new MaskRegions(detachableStrip,
-            new Region(0.91, 0.1, 0.08, 0.1), "Helvetica-Bold", 14.0, "CENTER", 1,
+            new Region(0.91, 0.1, 0.08, 0.1), "Helvetica-Bold", 14.0, "CENTER", 1, 2,
             List.of(
                 new CropRegion(1, 4, new Region(0, 0, 0.5, 1)),
                 new CropRegion(1, 1, new Region(0.5, 0, 0.5, 1)),
                 new CropRegion(2, 2, new Region(0, 0, 0.5, 1)),
-                new CropRegion(2, 3, new Region(0.5, 0, 0.5, 1))));
+                new CropRegion(2, 3, new Region(0.5, 0, 0.5, 1))),
+            List.of(new CutRegion(1, new Region(0.49, 0, 0.02, 1)),
+                new CutRegion(1, detachableStrip)),
+            List.of());
         byte[] out = masker.anonymize(twoLandscapeSides(), layout, "PH-001");
 
         try (PDDocument doc = PDDocument.load(new ByteArrayInputStream(out))) {

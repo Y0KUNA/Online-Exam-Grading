@@ -1,0 +1,160 @@
+@startuml SubmissionDomainModel
+title Submission Service — Domain class diagram
+hide empty members
+skinparam classAttributeIconSize 0
+
+package "Submission Service domain" {
+  class Submission <<entity>> {
+    +submissionId: UUID
+    +examId: UUID
+    +status: SubmissionStatus
+    +currentFileVersion: int
+    +progress: int
+    +uploadExpiresAt: Instant
+    +declaredFileSizeBytes: Long
+    +fileSizeBytes: Long
+    +pageCount: Integer
+    +objectKey: String
+    +failureCode: String
+    +version: int
+    +updatedAt: Instant
+  }
+
+  class PaperTemplate <<entity>> {
+    +templateId: UUID
+    +name: String
+    +active: boolean
+    +maskX: double
+    +maskY: double
+    +maskWidth: double
+    +maskHeight: double
+  }
+
+  class ExamFile <<entity>> {
+    +fileId: UUID
+    +type: ExamFileType
+    +objectKey: String
+    +sha256: String
+    +sizeBytes: long
+    +version: int
+    +isCurrent: boolean
+  }
+
+  class ProcessingJob <<entity>> {
+    +jobId: UUID
+    +step: JobStep
+    +status: JobStatus
+    +attempt: int
+    +nextRetryAt: Instant
+  }
+
+  enum SubmissionStatus {
+    UPLOADING
+    UPLOADED
+    VALIDATING
+    ANONYMIZING
+    READY_FOR_GRADING
+    GRADING
+    REVIEW_REQUIRED
+    COMPLETED
+    FINALIZED
+    FAILED
+  }
+
+  enum ExamFileType { ORIGINAL; ANONYMIZED }
+  enum JobStep { VALIDATE; ANONYMIZE }
+  enum JobStatus { QUEUED; RUNNING; SUCCEEDED; RETRY_WAIT; FAILED }
+}
+
+' A template is shared and survives individual submissions.
+PaperTemplate "1" -- "0..*" Submission : used by >
+' Files and jobs cannot exist outside their Submission aggregate.
+Submission "1" *-- "0..*" ExamFile : owns >
+Submission "1" *-- "0..*" ProcessingJob : schedules >
+' Status is a value type, not a service or an entity.
+Submission --> SubmissionStatus : status
+ExamFile --> ExamFileType : type
+ProcessingJob --> JobStep : step
+ProcessingJob --> JobStatus : status
+
+note right of Submission
+  examId is a cross-service logical reference.
+  Exam is not duplicated in this bounded context.
+end note
+@enduml
+
+@startuml SubmissionApplicationDesign
+title Submission Service — Application class diagram
+hide empty members
+skinparam classAttributeIconSize 0
+
+class SubmissionController <<controller>>
+class PaperTemplateController <<controller>>
+class InternalSubmissionController <<controller>>
+class SubmissionEventsController <<controller>>
+class SubmissionService <<service>>
+class ValidationWorker <<consumer>>
+class AnonymizationWorker <<consumer>>
+class SubmissionOutbox <<component>>
+class SubmissionOutboxRelay <<component>>
+class IdentityClient <<client>>
+interface ObjectStorageGateway <<gateway>>
+class S3ObjectStorage <<adapter>>
+
+interface SubmissionRepositoryMarker <<repository>>
+interface PaperTemplateRepository <<repository>>
+interface ExamFileRepository <<repository>>
+interface ProcessingJobRepository <<repository>>
+interface SubmissionEventRepository <<repository>>
+
+class JdbcSubmissionRepository <<repository>>
+class JdbcPaperTemplateRepository <<repository>>
+class JdbcExamFileRepository <<repository>>
+class JdbcProcessingJobRepository <<repository>>
+class JdbcSubmissionEventRepository <<repository>>
+
+SubmissionController --> SubmissionService
+PaperTemplateController --> SubmissionService
+InternalSubmissionController --> SubmissionService
+SubmissionEventsController --> SubmissionEventRepository
+
+SubmissionService ..> SubmissionRepositoryMarker
+SubmissionService ..> PaperTemplateRepository
+SubmissionService ..> ExamFileRepository
+SubmissionService ..> ProcessingJobRepository
+SubmissionService ..> SubmissionEventRepository
+SubmissionService ..> ObjectStorageGateway
+SubmissionService ..> IdentityClient
+SubmissionService ..> SubmissionOutbox
+
+ValidationWorker ..> SubmissionRepositoryMarker
+ValidationWorker ..> ExamFileRepository
+ValidationWorker ..> ProcessingJobRepository
+ValidationWorker ..> ObjectStorageGateway
+ValidationWorker ..> SubmissionOutbox
+AnonymizationWorker ..> SubmissionRepositoryMarker
+AnonymizationWorker ..> ExamFileRepository
+AnonymizationWorker ..> ProcessingJobRepository
+AnonymizationWorker ..> ObjectStorageGateway
+AnonymizationWorker ..> SubmissionOutbox
+SubmissionOutboxRelay ..> SubmissionOutbox
+
+JdbcSubmissionRepository ..|> SubmissionRepositoryMarker
+JdbcPaperTemplateRepository ..|> PaperTemplateRepository
+JdbcExamFileRepository ..|> ExamFileRepository
+JdbcProcessingJobRepository ..|> ProcessingJobRepository
+JdbcSubmissionEventRepository ..|> SubmissionEventRepository
+S3ObjectStorage ..|> ObjectStorageGateway
+
+note right of SubmissionService
+  One application service for Submission use cases.
+  SubmissionStatus is only an enum owned by Submission;
+  it must not create SubmissionStatusService.
+end note
+
+note bottom of SubmissionOutboxRelay
+  Publishes jobs to RabbitMQ.
+  RabbitMQ/message flow belongs in a sequence or component diagram,
+  not as an entity relationship.
+end note
+@enduml

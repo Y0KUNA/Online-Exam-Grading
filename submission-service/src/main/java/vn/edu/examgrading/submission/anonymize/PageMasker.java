@@ -28,6 +28,7 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.MaskRegions;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CropRegion;
+import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CutRegion;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.RedactionRegion;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.Region;
 
@@ -134,14 +135,9 @@ public class PageMasker {
                 // Redact before cropping because the coordinates are defined
                 // relative to the complete scanner image.
                 int templatePage = templatePageFor(i, regions);
-                // Legacy templates have no crop layout, so retain their existing
-                // redaction behaviour. Configured layouts physically remove edge
-                // regions while producing their logical pages below.
-                if (regions.cropRegions().isEmpty()) {
-                    paintPlainRedactions(image, regions, templatePage);
-                    if (templatePage == regions.maskPage()) {
-                        paintMaskedPage(image, regions, pseudonym, dpi);
-                    }
+                paintPlainRedactions(image, regions, templatePage);
+                if (regions.cropRegions().isEmpty() && templatePage == regions.maskPage()) {
+                    paintMaskedPage(image, regions, pseudonym, dpi);
                 }
 
                 renderedSides.add(new RenderedSide(image, dpi));
@@ -177,7 +173,7 @@ public class PageMasker {
                     continue;
                 }
                 RenderedSide side = sides.get(sourceIndex);
-                addImagePage(out, crop(side.image(), cropWithoutRedactions(crop.region(), crop.templatePage(), regions)), side.dpi());
+                addImagePage(out, crop(side.image(), cropWithoutCuts(crop.region(), crop.templatePage(), regions)), side.dpi());
             }
         }
     }
@@ -205,21 +201,16 @@ public class PageMasker {
         return crop(source, x, y, width, height);
     }
 
-    private static Region cropWithoutRedactions(Region crop, int templatePage, MaskRegions regions)
+    private static Region cropWithoutCuts(Region crop, int templatePage, MaskRegions regions)
             throws MaskException {
         Region result = crop;
-        java.util.ArrayList<Region> removals = new java.util.ArrayList<>();
-        if (templatePage == regions.maskPage()) removals.add(regions.mask());
-        for (RedactionRegion redaction : regions.redactionRegions()) {
-            if (redaction.templatePage() == templatePage) removals.add(redaction.region());
+        for (CutRegion cut : regions.cutRegions()) {
+            if (cut.templatePage() == templatePage) result = subtractEdgeRegion(result, cut.region());
         }
-        for (Region removal : removals) result = subtractEdgeRegion(result, removal);
         return result;
     }
 
     private static Region subtractEdgeRegion(Region crop, Region removal) throws MaskException {
-        // Pointer coordinates are normalized from a browser canvas; accept a
-        // small rounding drift at a page edge (for example y=0.0007).
         final double epsilon = 0.005;
         double cropRight = crop.x() + crop.width();
         double removalRight = removal.x() + removal.width();
@@ -229,9 +220,7 @@ public class PageMasker {
         if (!intersects) return crop;
         boolean spansHeight = removal.y() <= crop.y() + epsilon
             && removal.y() + removal.height() >= crop.y() + crop.height() - epsilon;
-        if (!spansHeight) {
-            throw new MaskException("MASK_NOT_EDGE", "masked region must span the full page height to be cut");
-        }
+        if (!spansHeight) throw new MaskException("MASK_NOT_EDGE", "cut region must span the full page height");
         if (removal.x() <= crop.x() + epsilon) {
             double newX = Math.min(cropRight, removalRight);
             return new Region(newX, crop.y(), cropRight - newX, crop.height());
@@ -240,7 +229,7 @@ public class PageMasker {
             double newRight = Math.max(crop.x(), removal.x());
             return new Region(crop.x(), crop.y(), newRight - crop.x(), crop.height());
         }
-        throw new MaskException("MASK_NOT_EDGE", "masked region is inside the logical page and cannot be cut");
+        throw new MaskException("MASK_NOT_EDGE", "cut region must touch a crop edge");
     }
 
     private static void addImagePage(PDDocument out, BufferedImage image, int dpi) throws java.io.IOException {
@@ -350,8 +339,8 @@ public class PageMasker {
     }
 
     private void validateRegions(MaskRegions regions) throws MaskException {
-        if (regions == null || regions.mask() == null || regions.print() == null) {
-            throw new MaskException("MASK_REGION_MISSING", "template has no mask/print region");
+        if (regions == null || regions.mask() == null || regions.print() == null || regions.cutRegions().isEmpty()) {
+            throw new MaskException("MASK_REGION_MISSING", "template has no cut/print region");
         }
         for (Region r : new Region[]{regions.mask(), regions.print()}) {
             if (r.x() < 0 || r.y() < 0 || r.width() <= 0 || r.height() <= 0
@@ -380,6 +369,15 @@ public class PageMasker {
                     || region.height() <= 0 || region.x() + region.width() > 1.0
                     || region.y() + region.height() > 1.0) {
                 throw new MaskException("INVALID_CROP", "crop region out of bounds");
+            }
+        }
+        for (CutRegion cut : regions.cutRegions()) {
+            Region region = cut.region();
+            if (cut.templatePage() < 1 || cut.templatePage() > regions.templatePageCount()
+                    || region == null || region.x() < 0 || region.y() < 0 || region.width() <= 0
+                    || region.height() <= 0 || region.x() + region.width() > 1.0
+                    || region.y() + region.height() > 1.0) {
+                throw new MaskException("INVALID_CUT", "cut region out of bounds");
             }
         }
         for (RedactionRegion redaction : regions.redactionRegions()) {

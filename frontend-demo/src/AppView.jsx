@@ -309,8 +309,21 @@ function TemplateEditor({ close, onCreated }) {
     setError(""); setStep("mask");
   };
   const position = (event) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
+    const canvasBounds = canvasRef.current?.getBoundingClientRect();
+    const bounds = canvasBounds?.width && canvasBounds?.height
+      ? canvasBounds
+      : event.currentTarget.getBoundingClientRect();
     return { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) };
+  };
+  const boundedRegion = ({ x, y, width, height }) => {
+    const left = Math.max(0, Math.min(1, x));
+    const top = Math.max(0, Math.min(1, y));
+    return {
+      x: left,
+      y: top,
+      width: Math.max(0, Math.min(1 - left, width)),
+      height: Math.max(0, Math.min(1 - top, height)),
+    };
   };
   const beginMask = (event) => {
     if (rendering) return;
@@ -328,7 +341,13 @@ function TemplateEditor({ close, onCreated }) {
     const active = activeMask.current;
     if (!active || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
     const { x, y } = position(event);
-    const resize = (region) => region.id === active.id ? { ...region, x: Math.min(active.startX, x), y: Math.min(active.startY, y), width: Math.abs(x - active.startX), height: Math.abs(y - active.startY) } : region;
+    const resize = (region) => region.id === active.id ? {
+      ...region,
+      ...boundedRegion({
+        x: Math.min(active.startX, x), y: Math.min(active.startY, y),
+        width: Math.abs(x - active.startX), height: Math.abs(y - active.startY),
+      }),
+    } : region;
     if (active.tool === "mask") setMasks((current) => current.map(resize)); else setRedactions((current) => current.map(resize));
   };
   const save = async () => {
@@ -337,9 +356,12 @@ function TemplateEditor({ close, onCreated }) {
     setSaving(true); setError("");
     try {
       await onCreated({ ...draft, pageWidth: 595, pageHeight: 842,
-        masks: masks.map(({ page, x, y, width, height }) => ({ page, x, y, width, height })),
-        redactions: redactions.map(({ page, x, y, width, height }) => ({ page, x, y, width, height })),
-        crops: crops.flatMap(({ page, x }) => [{ page, order: page === 1 ? 4 : page * 2 - 2, x: 0, y: 0, width: x, height: 1 }, { page, order: page === 1 ? 1 : page * 2 - 1, x, y: 0, width: 1 - x, height: 1 }]) }, file);
+        masks: masks.map(({ page, ...region }) => ({ page, ...boundedRegion(region) })),
+        redactions: redactions.map(({ page, ...region }) => ({ page, ...boundedRegion(region) })),
+        crops: crops.flatMap(({ page, x }) => {
+          const splitX = Math.max(0, Math.min(1, x));
+          return [{ page, order: page === 1 ? 4 : page * 2 - 2, x: 0, y: 0, width: splitX, height: 1 }, { page, order: page === 1 ? 1 : page * 2 - 1, x: splitX, y: 0, width: 1 - splitX, height: 1 }];
+        }) }, file);
       close();
     } catch (cause) { setError(cause.message || "Không thể lưu mẫu giấy thi."); } finally { setSaving(false); }
   };
@@ -355,9 +377,10 @@ function TemplateEditor({ close, onCreated }) {
       {error && <p className="form-error">{error}</p>}<div className="actions"><Button className="secondary" onClick={close}>Hủy</Button><Button type="submit">Tiếp tục đánh dấu</Button></div>
     </form> : <div className="template-editor">
       <div className="actions"><Button type="button" className={tool === "mask" ? "" : "secondary"} onClick={() => setTool("mask")}>Che và in số phách</Button><Button type="button" className={tool === "redact" ? "" : "secondary"} onClick={() => setTool("redact")}>Che thường</Button><Button type="button" className={tool === "split" ? "" : "secondary"} onClick={() => setTool("split")}>Đường chia trang</Button>{pageCount > 1 && <><Button type="button" className="secondary" disabled={previewPage === 1} onClick={() => setPreviewPage((page) => page - 1)}>← Mặt trước</Button><span>Mặt {previewPage}/{pageCount}</span><Button type="button" className="secondary" disabled={previewPage === pageCount} onClick={() => setPreviewPage((page) => page + 1)}>Mặt sau →</Button></>}</div>
-      <p>{tool === "mask" ? "Khoanh vùng thông tin cá nhân để che và in số phách." : tool === "redact" ? "Khoanh vùng cần che trắng, không in số phách." : "Bấm vào vị trí cần chia dọc. Mỗi mặt chỉ có một đường chia."}</p>
+      <p>{tool === "mask" ? "Khoanh vùng thông tin cá nhân cần che và in số phách." : tool === "redact" ? "Khoanh vùng cần che trắng, không in số phách." : "Bấm vào vị trí cần chia dọc. Mỗi mặt chỉ có một đường chia."}</p>
       <div className="pdf-preview" onPointerDown={beginMask} onPointerMove={resizeMask} onPointerUp={(event) => { activeMask.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId); }}>
         <canvas ref={canvasRef} aria-label="Trang đầu PDF mẫu" />
+        <span className="pdf-page-boundary" aria-hidden="true" />
         {rendering && <span className="pdf-rendering">Đang dựng trang PDF…</span>}
         {masks.filter((mask) => mask.page === previewPage).map((mask) => <span key={mask.id} className="mask-region" style={{ left: `${mask.x * 100}%`, top: `${mask.y * 100}%`, width: `${mask.width * 100}%`, height: `${mask.height * 100}%` }} />)}
         {redactions.filter((redaction) => redaction.page === previewPage).map((redaction) => <span key={redaction.id} className="mask-region" style={{ left: `${redaction.x * 100}%`, top: `${redaction.y * 100}%`, width: `${redaction.width * 100}%`, height: `${redaction.height * 100}%` }} />)}

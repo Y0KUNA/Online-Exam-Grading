@@ -26,20 +26,23 @@ public interface PaperTemplateRepository {
 
     /** A logical output page cropped from one page of the scanned template. */
     record CropRegion(int templatePage, int outputOrder, Region region) {}
+    /** A physical phách strip removed from a template page before output. */
+    record CutRegion(int templatePage, Region region) {}
     record RedactionRegion(int templatePage, Region region) {}
 
     record MaskRegions(Region mask, Region print, String fontName, double fontSize, String align,
                        int maskPage, int templatePageCount, List<CropRegion> cropRegions,
-                       List<RedactionRegion> redactionRegions) {
+                       List<CutRegion> cutRegions, List<RedactionRegion> redactionRegions) {
         /** Compatibility constructor for templates created before crop layouts existed. */
         public MaskRegions(Region mask, Region print, String fontName, double fontSize, String align) {
-            this(mask, print, fontName, fontSize, align, 1, 1, List.of(), List.of());
+            this(mask, print, fontName, fontSize, align, 1, 1, List.of(), List.of(new CutRegion(1, mask)), List.of());
         }
 
         public MaskRegions(Region mask, Region print, String fontName, double fontSize, String align,
                            int maskPage, List<CropRegion> cropRegions) {
             this(mask, print, fontName, fontSize, align, maskPage,
-                cropRegions.stream().mapToInt(CropRegion::templatePage).max().orElse(1), cropRegions, List.of());
+                cropRegions.stream().mapToInt(CropRegion::templatePage).max().orElse(1), cropRegions,
+                List.of(new CutRegion(maskPage, mask)), List.of());
         }
     }
 }

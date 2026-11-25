@@ -115,7 +115,7 @@ export default function useExamWorkspace() {
       })
       .finally(() => { if (!aborter.signal.aborted) setLoading(false); });
     return () => aborter.abort();
-  }, [authToken, role, authReady, user?.userId]);
+  }, [authToken, role, authReady, user?.userId, revision]);
 
   useEffect(() => {
     if (!authToken || role !== "office") { setTemplates([]); return undefined; }

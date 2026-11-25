@@ -168,7 +168,9 @@ class PageMaskerTest {
 
     @Test
     void landscapeSheetSidesAreSplitInReadingOrder() throws Exception {
-        Region detachableStrip = new Region(0.9, 0, 0.1, 1);
+        // Pointer input commonly lands slightly inside the rendered PDF edge.
+        // 0.991 must still be treated as the right detachable edge.
+        Region detachableStrip = new Region(0.9, 0, 0.091, 1);
         MaskRegions layout = new MaskRegions(detachableStrip,
             new Region(0.91, 0.1, 0.08, 0.1), "Helvetica-Bold", 14.0, "CENTER", 1, 2,
             List.of(

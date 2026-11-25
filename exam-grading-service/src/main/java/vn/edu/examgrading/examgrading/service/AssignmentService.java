@@ -38,6 +38,11 @@ public class AssignmentService {
             jdbc.update("insert into grading_assignment(assignment_id,exam_id,submission_id,grader_id,status) values(?,?,?,?, 'ASSIGNED')", assignmentId, examId, submissionId, graderId);
             created.add(Map.of("assignmentId", assignmentId, "submissionId", submissionId, "graderId", graderId, "status", "ASSIGNED"));
         }
+        // Submission owns the status rendered by the Exam Office. The internal
+        // transition is idempotent, so an assignment retry safely keeps GRADING.
+        for (UUID submissionId : submissions) {
+            this.submissions.changeStatus(submissionId, "GRADING", 0);
+        }
         return Map.of("created", created);
     }
 
@@ -169,13 +174,27 @@ public class AssignmentService {
         BigDecimal total = jdbc.queryForObject("select coalesce(sum(score), 0) from question_score where attempt_id=?", BigDecimal.class, attemptId);
         jdbc.update("update grading_attempt set total_score=?,status='CONFIRMED',confirmed_at=now() where attempt_id=?", total, attemptId);
         jdbc.update("update grading_assignment set status='COMPLETED' where assignment_id=?", attempt.get("assignmentId"));
+        UUID submissionId = (UUID) attempt.get("submissionId");
+        Integer remaining = jdbc.queryForObject("""
+            select count(*) from grading_assignment
+            where submission_id=? and status <> 'COMPLETED'
+            """, Integer.class, submissionId);
+        // A cross-graded paper becomes complete only after every assigned grader
+        // confirms. This updates the submission read model used by Exam Office.
+        if (remaining != null && remaining == 0) {
+            // Existing assignments created before the GRADING transition was
+            // introduced can still be READY_FOR_GRADING. Bring those records
+            // through the valid state transition before marking them completed.
+            submissions.changeStatus(submissionId, "GRADING", 0);
+            submissions.changeStatus(submissionId, "COMPLETED", 100);
+        }
         return Map.of("attemptId", attemptId, "status", "CONFIRMED", "totalScore", total);
     }
 
     private Map<String, Object> attemptForUpdate(UUID attemptId) {
         List<Map<String, Object>> attempts = jdbc.queryForList("""
             select ga.attempt_id as \"attemptId\", ga.assignment_id as \"assignmentId\", ga.status,
-                   a.exam_id as \"examId\" from grading_attempt ga
+                   a.exam_id as \"examId\", a.submission_id as \"submissionId\" from grading_attempt ga
             join grading_assignment a on a.assignment_id=ga.assignment_id where ga.attempt_id=? for update
             """, attemptId);
         if (attempts.isEmpty()) throw new IllegalArgumentException("attempt not found");

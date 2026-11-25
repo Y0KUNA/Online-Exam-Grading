@@ -211,7 +211,10 @@ public class PageMasker {
     }
 
     private static Region subtractEdgeRegion(Region crop, Region removal) throws MaskException {
-        final double epsilon = 0.005;
+        // A pointer-drawn region very rarely lands at exactly 0 or 1.  Treat a
+        // one-percent gap as the page edge; otherwise a visually edge-aligned
+        // detachable strip (for example right=0.991) fails at worker time.
+        final double epsilon = 0.01;
         double cropRight = crop.x() + crop.width();
         double removalRight = removal.x() + removal.width();
         boolean intersects = removal.x() < cropRight - epsilon && removalRight > crop.x() + epsilon

@@ -15,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.server.ResponseStatusException;
 import vn.edu.examgrading.common.security.HmacSigner;
+import vn.edu.examgrading.examgrading.client.SubmissionClient;
 import vn.edu.examgrading.examgrading.service.AssignmentService;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -80,7 +81,10 @@ class InternalGradingControllerIT {
         ds.setUsername(user);
         ds.setPassword(password);
         jdbc = new JdbcTemplate(ds);
-        controller = new InternalGradingController(jdbc, SECRET, new AssignmentService(jdbc));
+        controller = new InternalGradingController(jdbc, SECRET, new AssignmentService(jdbc, new SubmissionClient() {
+            @Override public Map<String, Object> anonymizedAccess(UUID submissionId) { return Map.of(); }
+            @Override public Map<String, Object> changeStatus(UUID submissionId, String newStatus, int progress) { return Map.of(); }
+        }));
         jdbc.update("insert into exam(exam_id,exam_code,name,subject) values(?,?,?,?)",
             examId, "IT-" + examId.toString().substring(0, 8), "IT Exam", "Math");
     }

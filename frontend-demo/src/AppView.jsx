@@ -325,6 +325,15 @@ function TemplateEditor({ close, onCreated }) {
       height: Math.max(0, Math.min(1 - top, height)),
     };
   };
+  // A phách cut must reach a page edge. Snap a pointer position that is within
+  // 1% of the border to the exact PDF boundary before persisting the template.
+  const snapCutToPageEdge = ({ x, y, width, height }) => {
+    const region = boundedRegion({ x, y, width, height });
+    const right = region.x + region.width;
+    const snappedLeft = region.x <= 0.01 ? 0 : region.x;
+    const snappedRight = right >= 0.99 ? 1 : right;
+    return { ...region, x: snappedLeft, width: Math.max(0, snappedRight - snappedLeft) };
+  };
   const beginMask = (event) => {
     if (rendering) return;
     const { x, y } = position(event);
@@ -356,7 +365,7 @@ function TemplateEditor({ close, onCreated }) {
     setSaving(true); setError("");
     try {
       await onCreated({ ...draft, pageWidth: 595, pageHeight: 842,
-        masks: masks.map(({ page, ...region }) => ({ page, ...boundedRegion(region) })),
+        masks: masks.map(({ page, ...region }) => ({ page, ...snapCutToPageEdge(region) })),
         redactions: redactions.map(({ page, ...region }) => ({ page, ...boundedRegion(region) })),
         crops: crops.flatMap(({ page, x }) => {
           const splitX = Math.max(0, Math.min(1, x));
@@ -618,7 +627,7 @@ function GraderHome({ exam, submissions, open, user }) {
 }
 function PaperList({ exam, submissions, back, grade }) {
   const papers = paperRows(submissions);
-  const completedCount = papers.filter((row) => row[5] === 'Đã chấm').length;
+  const completedCount = papers.filter((row) => row[2] === 'Đã chấm').length;
   return (
     <>
       <Header crumb="GIÁM KHẢO / KỲ THI" title="Bài làm được phân công">

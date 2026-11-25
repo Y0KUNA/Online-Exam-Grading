@@ -26,12 +26,22 @@ public class HttpSubmissionClient implements SubmissionClient {
 
     @Override @SuppressWarnings("unchecked")
     public Map<String, Object> anonymizedAccess(UUID submissionId) {
+        return exchange(submissionId + "/files/ANONYMIZED/access", Map.of());
+    }
+
+    @Override
+    public Map<String, Object> changeStatus(UUID submissionId, String newStatus, int progress) {
+        return exchange(submissionId + "/status", Map.of("newStatus", newStatus, "progress", progress));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> exchange(String path, Object body) {
         Instant now = Instant.now(); UUID requestId = UUID.randomUUID(); String caller = "exam-grading-service";
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-Service-Caller", caller); headers.set("X-Service-Request-Id", requestId.toString());
         headers.set("X-Service-Timestamp", now.toString());
         headers.set("X-Service-Signature", HmacSigner.sign(secret, caller + "\n" + requestId + "\n" + now.toEpochMilli()));
-        return http.exchange(baseUrl + "/internal/v1/submissions/" + submissionId + "/files/ANONYMIZED/access", HttpMethod.POST,
-            new HttpEntity<>(headers), Map.class).getBody();
+        return http.exchange(baseUrl + "/internal/v1/submissions/" + path, HttpMethod.POST,
+            new HttpEntity<>(body, headers), Map.class).getBody();
     }
 }

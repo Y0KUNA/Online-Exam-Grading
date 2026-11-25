@@ -98,7 +98,7 @@ public class PaperTemplateController {
     }
 
     private static void validateCutRegions(List<Map<String, Object>> cuts, List<Map<String, Object>> crops) {
-        final BigDecimal tolerance = new BigDecimal("0.005");
+        final BigDecimal tolerance = new BigDecimal("0.01");
         for (Map<String, Object> cut : cuts) {
             BigDecimal y = number(cut, "y");
             BigDecimal bottom = y.add(number(cut, "height"));
@@ -111,7 +111,11 @@ public class PaperTemplateController {
             boolean touchesCropEdge = crops.stream().filter(crop -> integer(crop, "page") == page).anyMatch(crop -> {
                 BigDecimal cropLeft = number(crop, "x");
                 BigDecimal cropRight = cropLeft.add(number(crop, "width"));
-                return left.compareTo(cropLeft.add(tolerance)) <= 0 || right.compareTo(cropRight.subtract(tolerance)) >= 0;
+                boolean overlapsCrop = left.compareTo(cropRight.add(tolerance)) < 0
+                    && right.compareTo(cropLeft.subtract(tolerance)) > 0;
+                boolean touchesLeft = left.compareTo(cropLeft.add(tolerance)) <= 0;
+                boolean touchesRight = right.compareTo(cropRight.subtract(tolerance)) >= 0;
+                return overlapsCrop && (touchesLeft || touchesRight);
             });
             if (!touchesCropEdge) {
                 throw new IllegalArgumentException("Vùng cắt phách phải chạm mép của một vùng trang đã tách.");

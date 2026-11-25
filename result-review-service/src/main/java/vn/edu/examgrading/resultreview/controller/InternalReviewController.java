@@ -36,7 +36,7 @@ public class InternalReviewController {
         UUID reviewId = UUID.randomUUID();
         String sql = """
             INSERT INTO review (review_id, submission_id, exam_id, reason_type, technical_code, detail, reason, status, created_by, opened_at)
-            VALUES (?, ?, ?, 'ANONYMIZATION', ?, ?, ?, 'OPEN', ?, now())
+            VALUES (?, ?, ?, 'ANONYMIZATION', ?, jsonb_build_object('message', ?), ?, 'OPEN', ?, now())
             """;
         jdbc.update(sql, reviewId, submissionId, examId, technicalCode, detail, reason, createdBy);
 

@@ -24,7 +24,7 @@ export async function request(path, { token = getStoredToken(), method = "GET", 
   });
   const contentType = response.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await response.json() : null;
-  if (!response.ok) throw new ApiError(payload?.message ?? `Yêu cầu thất bại (${response.status})`, response.status, payload);
+  if (!response.ok) throw new ApiError(payload?.message ?? payload?.detail ?? `Yêu cầu thất bại (${response.status})`, response.status, payload);
   return payload;
 }
 
@@ -39,7 +39,7 @@ export async function upload(path, file, { token = getStoredToken(), signal } = 
   });
   const contentType = response.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await response.json() : null;
-  if (!response.ok) throw new ApiError(payload?.message ?? `Yêu cầu thất bại (${response.status})`, response.status, payload);
+  if (!response.ok) throw new ApiError(payload?.message ?? payload?.detail ?? `Yêu cầu thất bại (${response.status})`, response.status, payload);
   return payload;
 }
 

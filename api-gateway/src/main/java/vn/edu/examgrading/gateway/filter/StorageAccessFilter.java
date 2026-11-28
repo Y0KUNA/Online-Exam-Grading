@@ -25,10 +25,13 @@ import reactor.core.publisher.Mono;
 @Component
 public final class StorageAccessFilter implements WebFilter, Ordered {
     private static final String STORAGE_PREFIX = "/storage";
-    private static final String ORIGINAL_POST_PATH = "/storage/original";
+    private static final Set<String> UPLOAD_PATHS = Set.of("/storage/original", "/storage/rubrics");
     private static final Pattern OBJECT = Pattern.compile(
         "/storage/(?:original|anonymized)/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
             + "/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/v[1-9][0-9]*\\.pdf");
+    private static final Pattern RUBRIC_OBJECT = Pattern.compile(
+        "/storage/rubrics/exams/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+            + "/rubrics/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\.pdf");
     private static final Set<String> ALLOWED_SIGNED_QUERY_KEYS = Set.of(
         "x-amz-algorithm", "x-amz-credential", "x-amz-date", "x-amz-expires", "x-amz-signedheaders",
         "x-amz-signature", "response-content-type", "response-content-disposition");
@@ -62,7 +65,7 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
         }
         applyCors(exchange);
         if (!path.equals(STORAGE_PREFIX) && !path.equals("/storage/")
-            && !path.startsWith("/storage/original") && !path.startsWith("/storage/anonymized")) {
+            && !path.startsWith("/storage/original") && !path.startsWith("/storage/anonymized") && !path.startsWith("/storage/rubrics")) {
             return finish(exchange, HttpStatus.NOT_FOUND);
         }
 
@@ -77,27 +80,27 @@ public final class StorageAccessFilter implements WebFilter, Ordered {
         if ((method == HttpMethod.GET || method == HttpMethod.HEAD) && !hasOnlyAllowedSignedQuery(exchange)) {
             return finish(exchange, HttpStatus.FORBIDDEN);
         }
-        if (path.equals(ORIGINAL_POST_PATH) && method == HttpMethod.POST) {
+        if (UPLOAD_PATHS.contains(path) && method == HttpMethod.POST) {
             if (!exchange.getRequest().getQueryParams().isEmpty()) {
                 return finish(exchange, HttpStatus.METHOD_NOT_ALLOWED);
             }
             return allowUpload(exchange, chain);
         }
-        if (OBJECT.matcher(path).matches() && (method == HttpMethod.GET || method == HttpMethod.HEAD)) {
+        if ((OBJECT.matcher(path).matches() || RUBRIC_OBJECT.matcher(path).matches()) && (method == HttpMethod.GET || method == HttpMethod.HEAD)) {
             if (!exchange.getRequest().getQueryParams().containsKey("X-Amz-Signature")) {
                 return finish(exchange, HttpStatus.FORBIDDEN);
             }
             return allowStorageRequest(exchange, chain);
         }
         if ((method == HttpMethod.GET || method == HttpMethod.HEAD)
-            && (path.startsWith("/storage/original/") || path.startsWith("/storage/anonymized/"))) {
+            && (path.startsWith("/storage/original/") || path.startsWith("/storage/anonymized/") || path.startsWith("/storage/rubrics/"))) {
             return finish(exchange, HttpStatus.NOT_FOUND);
         }
         if (path.equals(STORAGE_PREFIX) || path.equals("/storage/")
-            || path.equals("/storage/original") || path.equals("/storage/anonymized")) {
+            || path.equals("/storage/original") || path.equals("/storage/anonymized") || path.equals("/storage/rubrics")) {
             return finish(exchange, HttpStatus.METHOD_NOT_ALLOWED);
         }
-        if (path.startsWith("/storage/original/") || path.startsWith("/storage/anonymized/")) {
+        if (path.startsWith("/storage/original/") || path.startsWith("/storage/anonymized/") || path.startsWith("/storage/rubrics/")) {
             return finish(exchange, HttpStatus.METHOD_NOT_ALLOWED);
         }
         return finish(exchange, HttpStatus.NOT_FOUND);

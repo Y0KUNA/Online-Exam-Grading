@@ -7,19 +7,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.examgrading.examgrading.dto.BulkAssignmentRequest;
 import vn.edu.examgrading.examgrading.dto.SaveQuestionScoreRequest;
 import vn.edu.examgrading.examgrading.dto.SaveScoresRequest;
 import vn.edu.examgrading.examgrading.client.SubmissionClient;
+import vn.edu.examgrading.examgrading.storage.RubricFileStorage;
 
 /** Owns local assignment and grading-attempt lifecycle data. */
 @Service
 public class AssignmentService {
     private final JdbcTemplate jdbc;
     private final SubmissionClient submissions;
-    public AssignmentService(JdbcTemplate jdbc, SubmissionClient submissions) { this.jdbc = jdbc; this.submissions = submissions; }
+    private final RubricFileStorage rubricFiles;
+    @Autowired
+    public AssignmentService(JdbcTemplate jdbc, SubmissionClient submissions, RubricFileStorage rubricFiles) { this.jdbc = jdbc; this.submissions = submissions; this.rubricFiles = rubricFiles; }
+    /** Compatibility constructor for focused tests that do not use rubric PDFs. */
+    public AssignmentService(JdbcTemplate jdbc, SubmissionClient submissions) { this(jdbc, submissions, null); }
 
     @Transactional
     public Map<String, Object> bulkAssign(UUID examId, BulkAssignmentRequest request) {
@@ -109,12 +115,20 @@ public class AssignmentService {
             from grading_attempt ga join grading_assignment a on a.assignment_id=ga.assignment_id where ga.attempt_id=?
             """, attemptId);
         UUID examId = (UUID) attempt.get("examId");
-        List<Map<String, Object>> questions = jdbc.queryForList("select question_id as \"questionId\",order_no as \"orderNo\",content,max_score as \"maxScore\",required from exam_question where exam_id=? order by order_no", examId);
-        List<Map<String, Object>> rubrics = jdbc.queryForList("select rubric_id as \"rubricId\",version,content::text as content from rubric where exam_id=? and status='ACTIVE' order by version desc limit 1", examId);
+        List<Map<String, Object>> questions = QuestionTree.fromRows(jdbc.queryForList("select question_id as \"questionId\",parent_question_id as \"parentQuestionId\",item_code as \"itemCode\",order_no as \"orderNo\",content,max_score as \"maxScore\",required from exam_question where exam_id=? order by order_no", examId));
+        List<Map<String, Object>> rubrics = jdbc.queryForList("select rubric_id as \"rubricId\",version,content::text as content,file_name as \"fileName\",object_key as \"objectKey\" from rubric where exam_id=? and status='ACTIVE' order by version desc limit 1", examId);
         Map<String, Object> file = submissions.anonymizedAccess((UUID) attempt.get("submissionId"));
-        return Map.of("attemptId", attemptId, "submissionId", attempt.get("submissionId"), "status", attempt.get("status"),
-            "anonymizedFileAccessUrl", file.get("url"), "fileAccessExpiresAt", file.get("expiresAt"), "questions", questions,
-            "rubric", rubrics.isEmpty() ? Map.of() : rubrics.getFirst());
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("attemptId", attemptId); result.put("submissionId", attempt.get("submissionId")); result.put("status", attempt.get("status"));
+        result.put("anonymizedFileAccessUrl", file.get("url")); result.put("fileAccessExpiresAt", file.get("expiresAt")); result.put("questions", questions);
+        Map<String, Object> rubric = rubrics.isEmpty() ? Map.of() : rubrics.getFirst();
+        result.put("rubric", rubric);
+        String objectKey = rubric.get("objectKey") == null ? null : rubric.get("objectKey").toString();
+        if (rubricFiles != null && objectKey != null && !objectKey.isBlank()) {
+            RubricFileStorage.AccessTicket ticket = rubricFiles.presignGet(objectKey);
+            result.put("rubricPdfAccessUrl", ticket.url()); result.put("rubricFileAccessExpiresAt", ticket.expiresAt());
+        }
+        return result;
     }
 
     @Transactional
@@ -129,7 +143,7 @@ public class AssignmentService {
         }
         UUID examId = (UUID) attempt.get("examId");
         Map<UUID, BigDecimal> maximums = new java.util.HashMap<>();
-        jdbc.query("select question_id, max_score from exam_question where exam_id=?", rs -> {
+        jdbc.query("select q.question_id, q.max_score from exam_question q where q.exam_id=? and not exists (select 1 from exam_question child where child.parent_question_id=q.question_id)", rs -> {
             maximums.put((UUID) rs.getObject("question_id"), rs.getBigDecimal("max_score"));
         }, examId);
         BigDecimal total = BigDecimal.ZERO;
@@ -168,7 +182,7 @@ public class AssignmentService {
         }
         requireDraft(attempt);
         UUID examId = (UUID) attempt.get("examId");
-        int questionCount = jdbc.queryForObject("select count(*) from exam_question where exam_id=?", Integer.class, examId);
+        int questionCount = jdbc.queryForObject("select count(*) from exam_question q where q.exam_id=? and not exists (select 1 from exam_question child where child.parent_question_id=q.question_id)", Integer.class, examId);
         int scoredCount = jdbc.queryForObject("select count(*) from question_score where attempt_id=?", Integer.class, attemptId);
         if (questionCount == 0 || scoredCount != questionCount) throw new IllegalArgumentException("ALL_QUESTIONS_MUST_BE_SCORED");
         BigDecimal total = jdbc.queryForObject("select coalesce(sum(score), 0) from question_score where attempt_id=?", BigDecimal.class, attemptId);

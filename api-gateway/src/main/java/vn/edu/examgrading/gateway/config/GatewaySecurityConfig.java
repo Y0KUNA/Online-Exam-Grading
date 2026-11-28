@@ -25,8 +25,8 @@ public class GatewaySecurityConfig {
             .authorizeExchange(exchanges -> exchanges
                 .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .pathMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/register/grader").permitAll()
-                .pathMatchers(HttpMethod.POST, "/storage/original", "/storage/anonymized").permitAll()
-                .pathMatchers("/.well-known/jwks.json", "/storage/original", "/storage/original/**", "/storage/anonymized", "/storage/anonymized/**", "/actuator/health", "/actuator/info").permitAll()
+                .pathMatchers(HttpMethod.POST, "/storage/original", "/storage/anonymized", "/storage/rubrics").permitAll()
+                .pathMatchers("/.well-known/jwks.json", "/storage/original", "/storage/original/**", "/storage/anonymized", "/storage/anonymized/**", "/storage/rubrics", "/storage/rubrics/**", "/actuator/health", "/actuator/info").permitAll()
                 .pathMatchers(HttpMethod.GET, "/api/v1/reviews/**").hasAnyRole("EXAM_OFFICE", "COUNCIL")
                 .pathMatchers(HttpMethod.GET, "/api/v1/grading/**").hasRole("GRADER")
                 .pathMatchers(HttpMethod.POST, "/api/v1/grading/**").hasRole("GRADER")

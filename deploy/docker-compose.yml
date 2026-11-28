@@ -89,7 +89,7 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
     entrypoint: >-
-      /bin/sh -c "until mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY; do sleep 2; done; mc mb --ignore-existing local/original; mc mb --ignore-existing local/anonymized; mc anonymous set none local/original; mc anonymous set none local/anonymized"
+      /bin/sh -c "until mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY; do sleep 2; done; mc mb --ignore-existing local/original; mc mb --ignore-existing local/anonymized; mc mb --ignore-existing local/rubrics; mc anonymous set none local/original; mc anonymous set none local/anonymized; mc anonymous set none local/rubrics"
   minio-trace:
     image: cgr.dev/chainguard/minio:latest
     depends_on:
@@ -188,6 +188,10 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       SUBMISSION_URL: http://submission-service:8082
       IDENTITY_HMAC_SECRET: ${IDENTITY_HMAC_SECRET}
+      S3_INTERNAL_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_PUBLIC_BASE: http://localhost:8080/storage
     depends_on:
       postgres-exam-grading: { condition: service_healthy }
     healthcheck:

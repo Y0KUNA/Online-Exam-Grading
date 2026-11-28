@@ -8,7 +8,22 @@ export const examApi = {
   createExam: (exam, options) => request("/api/v1/exams", { ...options, method: "POST", body: exam }),
   setTemplate: (examId, templateId, options) => request(`/api/v1/exams/${examId}/template`, { ...options, method: "PUT", body: { templateId } }),
   addQuestion: (examId, question, options) => request(`/api/v1/exams/${examId}/questions`, { ...options, method: "POST", body: question }),
+  replaceQuestionTree: (examId, items, options) => request(`/api/v1/exams/${examId}/questions/tree`, { ...options, method: "PUT", body: { items } }),
   createRubric: (examId, content, options) => request(`/api/v1/exams/${examId}/rubrics`, { ...options, method: "POST", body: { content } }),
+  listRubrics: (examId, options) => request(`/api/v1/exams/${examId}/rubrics`, options),
+  rubricPdf: (examId, rubricId, options) => request(`/api/v1/exams/${examId}/rubrics/${rubricId}/file`, options),
+  uploadRubricPdf: async (examId, file, { token, signal } = {}) => {
+    const started = await request(`/api/v1/exams/${examId}/rubrics/upload`, {
+      token, signal, method: "POST",
+      body: { fileName: file.name, fileSizeBytes: file.size, contentType: file.type || "application/pdf" },
+    });
+    const form = new FormData();
+    for (const [name, value] of Object.entries(started.upload?.fields ?? {})) form.append(name, String(value));
+    form.append("file", file, file.name);
+    const response = await fetch(started.upload?.url, { method: "POST", signal, body: form });
+    if (!response.ok) throw new ApiError(`Không thể tải rubric PDF lên storage (${response.status})`, response.status);
+    return request(`/api/v1/exams/${examId}/rubrics/${started.rubricId}/complete`, { token, signal, method: "POST", body: {} });
+  },
   activateRubric: (examId, rubricId, options) => request(`/api/v1/exams/${examId}/rubrics/${rubricId}/activate`, { ...options, method: "POST", body: { confirmed: true } }),
   activateExam: (examId, options) => request(`/api/v1/exams/${examId}/activate`, { ...options, method: "POST" }),
   closeExam: (examId, options) => request(`/api/v1/exams/${examId}/close`, { ...options, method: "POST" }),

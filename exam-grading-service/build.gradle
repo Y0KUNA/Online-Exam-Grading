@@ -10,6 +10,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
+    // The rubric PDF follows the same browser -> Gateway -> MinIO presigned
+    // POST flow as a submission, but lives in its own bucket and lifecycle.
+    implementation 'io.minio:minio:8.5.17'
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.testcontainers:postgresql:1.20.4'

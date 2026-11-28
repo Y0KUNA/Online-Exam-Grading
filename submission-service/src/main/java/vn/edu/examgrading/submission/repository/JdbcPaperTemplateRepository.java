@@ -58,12 +58,12 @@ public class JdbcPaperTemplateRepository implements PaperTemplateRepository {
             com.fasterxml.jackson.databind.JsonNode root = OBJECT_MAPPER.readTree(maskJson);
             com.fasterxml.jackson.databind.JsonNode mask = root.path("mask");
             com.fasterxml.jackson.databind.JsonNode print = root.path("print");
-            Region maskRegion = new Region(
+            Region maskRegion = mask.isObject() ? new Region(
                 mask.path("x").asDouble(), mask.path("y").asDouble(),
-                mask.path("width").asDouble(), mask.path("height").asDouble());
-            Region printRegion = new Region(
+                mask.path("width").asDouble(), mask.path("height").asDouble()) : null;
+            Region printRegion = print.isObject() ? new Region(
                 print.path("x").asDouble(), print.path("y").asDouble(),
-                print.path("width").asDouble(), print.path("height").asDouble());
+                print.path("width").asDouble(), print.path("height").asDouble()) : null;
             String fontName = print.path("fontName").asText("Helvetica");
             double fontSize = print.path("fontSize").asDouble(12.0);
             String align = print.path("align").asText("CENTER");

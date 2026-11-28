@@ -27,7 +27,7 @@ import vn.edu.examgrading.submission.client.ResultClient;
 /**
  * Worker consumer for ANONYMIZE jobs (TICKET 03, spec §7/§8).
  * On receipt performs T06 (VALIDATING → ANONYMIZING), downloads ORIGINAL,
- * masks page 1 via {@link PageMasker}, writes the ANONYMIZED object to the
+ * cuts configured edge strips via {@link PageMasker}, writes the ANONYMIZED object to the
  * anonymized bucket and moves the submission to READY_FOR_GRADING (T09).
  * Technical errors retry via {@code submission.anonymize.retry.30s|2m|10m}
  * (max 3 retries), then FAILED with {@code ANONYMIZE_RETRY_EXHAUSTED};

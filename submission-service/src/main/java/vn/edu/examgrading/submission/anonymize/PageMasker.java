@@ -1,10 +1,6 @@
 package vn.edu.examgrading.submission.anonymize;
 
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -29,20 +25,17 @@ import org.springframework.stereotype.Component;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.MaskRegions;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CropRegion;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.CutRegion;
-import vn.edu.examgrading.submission.repository.PaperTemplateRepository.RedactionRegion;
 import vn.edu.examgrading.submission.repository.PaperTemplateRepository.Region;
 
 /**
  * Builds the ANONYMIZED PDF per spec §7. Every scanned side is rasterized to an
- * RGB bitmap. The first side has its identity region replaced with the số phách.
+ * RGB bitmap. Selected edge strips are removed from each output page.
  * Pages are cropped only from the explicit layout stored on the paper template.
  * This avoids guessing a centre line: real templates can have covers, margins,
  * unequal page widths, and different layouts on the two sides of a sheet.
  */
 @Component
 public class PageMasker {
-
-    private static final int MARGIN_PX = 2;
 
     private final int renderDpi;
     private final int minRenderDpi;
@@ -111,9 +104,6 @@ public class PageMasker {
 
     byte[] doAnonymize(byte[] pdfBytes, MaskRegions regions, String pseudonym)
             throws MaskException, LimitExceededException {
-        if (pseudonym == null || pseudonym.isBlank()) {
-            throw new MaskException("PSEUDONYM_MISSING", "pseudonym is required");
-        }
         try (PDDocument src = PDDocument.load(new ByteArrayInputStream(pdfBytes));
              PDDocument out = new PDDocument();
              ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
@@ -132,14 +122,6 @@ public class PageMasker {
                 int dpi = resolveDpi(media.getWidth(), media.getHeight());
                 BufferedImage image = renderer.renderImageWithDPI(i, dpi, ImageType.RGB);
 
-                // Redact before cropping because the coordinates are defined
-                // relative to the complete scanner image.
-                int templatePage = templatePageFor(i, regions);
-                paintPlainRedactions(image, regions, templatePage);
-                if (regions.cropRegions().isEmpty() && templatePage == regions.maskPage()) {
-                    paintMaskedPage(image, regions, pseudonym, dpi);
-                }
-
                 renderedSides.add(new RenderedSide(image, dpi));
             }
             addLogicalPages(out, renderedSides, regions);
@@ -157,8 +139,10 @@ public class PageMasker {
             throws java.io.IOException, MaskException {
         List<CropRegion> crops = regions.cropRegions();
         if (crops == null || crops.isEmpty()) {
-            for (RenderedSide side : sides) {
-                addImagePage(out, side.image(), side.dpi());
+            for (int i = 0; i < sides.size(); i++) {
+                RenderedSide side = sides.get(i);
+                int templatePage = templatePageFor(i, regions);
+                addImagePage(out, crop(side.image(), cropWithoutCuts(new Region(0, 0, 1, 1), templatePage, regions)), side.dpi());
             }
             return;
         }
@@ -250,73 +234,6 @@ public class PageMasker {
 
     private record RenderedSide(BufferedImage image, int dpi) {}
 
-    private void paintMaskedPage(BufferedImage image, MaskRegions regions, String pseudonym, int dpi) {
-        int w = image.getWidth();
-        int h = image.getHeight();
-
-        int maskX = (int) Math.round(regions.mask().x() * w);
-        int maskY = (int) Math.round(regions.mask().y() * h);
-        int maskW = (int) Math.round(regions.mask().width() * w);
-        int maskH = (int) Math.round(regions.mask().height() * h);
-
-        Graphics2D g = image.createGraphics();
-        try {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(Color.WHITE);
-            g.fillRect(maskX, maskY, maskW, maskH);
-
-            drawPseudonym(g, regions, pseudonym, w, h, dpi);
-        } finally {
-            g.dispose();
-        }
-    }
-
-    private static void paintPlainRedactions(BufferedImage image, MaskRegions regions, int templatePage) {
-        Graphics2D graphics = image.createGraphics();
-        try {
-            graphics.setColor(Color.WHITE);
-            for (RedactionRegion redaction : regions.redactionRegions()) {
-                if (redaction.templatePage() != templatePage) continue;
-                Region region = redaction.region();
-                graphics.fillRect((int) Math.round(region.x() * image.getWidth()),
-                    (int) Math.round(region.y() * image.getHeight()),
-                    (int) Math.round(region.width() * image.getWidth()),
-                    (int) Math.round(region.height() * image.getHeight()));
-            }
-        } finally {
-            graphics.dispose();
-        }
-    }
-
-    private void drawPseudonym(Graphics2D g, MaskRegions regions, String pseudonym,
-                               int imgW, int imgH, int dpi) {
-        Region print = regions.print();
-        int px = (int) Math.round(print.x() * imgW);
-        int py = (int) Math.round(print.y() * imgH);
-        int pw = (int) Math.round(print.width() * imgW);
-        int ph = (int) Math.round(print.height() * imgH);
-
-        // fontSize is in PDF points; scale to rendered pixels via dpi/72.
-        int fontPx = Math.max(8, (int) Math.round(regions.fontSize() * dpi / 72.0));
-        Font font = new Font("SansSerif",
-            regions.fontName() != null && regions.fontName().toLowerCase().contains("bold")
-                ? Font.BOLD : Font.PLAIN, fontPx);
-        g.setFont(font);
-        g.setColor(Color.BLACK);
-
-        FontMetrics fm = g.getFontMetrics();
-        int textW = fm.stringWidth(pseudonym);
-        int textH = fm.getAscent();
-        int tx;
-        String align = regions.align() == null ? "CENTER" : regions.align().toUpperCase();
-        switch (align) {
-            case "LEFT" -> tx = px + MARGIN_PX;
-            case "RIGHT" -> tx = px + pw - textW - MARGIN_PX;
-            default -> tx = px + (pw - textW) / 2;
-        }
-        int ty = py + (ph + textH) / 2 - fm.getDescent();
-        g.drawString(pseudonym, tx, ty);
-    }
 
     private int resolveDpi(double pageWidthPt, double pageHeightPt) throws LimitExceededException {
         double pixelsAtDpi = pageWidthPt * pageHeightPt * renderDpi * renderDpi / (72.0 * 72.0);
@@ -342,25 +259,8 @@ public class PageMasker {
     }
 
     private void validateRegions(MaskRegions regions) throws MaskException {
-        if (regions == null || regions.mask() == null || regions.print() == null || regions.cutRegions().isEmpty()) {
-            throw new MaskException("MASK_REGION_MISSING", "template has no cut/print region");
-        }
-        for (Region r : new Region[]{regions.mask(), regions.print()}) {
-            if (r.x() < 0 || r.y() < 0 || r.width() <= 0 || r.height() <= 0
-                    || r.x() + r.width() > 1.0 || r.y() + r.height() > 1.0) {
-                throw new MaskException("INVALID_REGION", "region out of bounds: " + r);
-            }
-        }
-        Region m = regions.mask();
-        Region p = regions.print();
-        if (p.x() < m.x() || p.y() < m.y()
-                || p.x() + p.width() > m.x() + m.width()
-                || p.y() + p.height() > m.y() + m.height()) {
-            throw new MaskException("INVALID_REGION", "print region must be inside mask region");
-        }
-        if (regions.maskPage() < 1 || regions.templatePageCount() < 1
-                || regions.maskPage() > regions.templatePageCount()) {
-            throw new MaskException("INVALID_REGION", "mask page must belong to the template");
+        if (regions == null || regions.cutRegions().isEmpty() || regions.templatePageCount() < 1) {
+            throw new MaskException("CUT_REGION_MISSING", "template has no cut region");
         }
         for (CropRegion crop : regions.cropRegions()) {
             if (crop.templatePage() < 1 || crop.templatePage() > regions.templatePageCount()
@@ -381,15 +281,6 @@ public class PageMasker {
                     || region.height() <= 0 || region.x() + region.width() > 1.0
                     || region.y() + region.height() > 1.0) {
                 throw new MaskException("INVALID_CUT", "cut region out of bounds");
-            }
-        }
-        for (RedactionRegion redaction : regions.redactionRegions()) {
-            Region region = redaction.region();
-            if (redaction.templatePage() < 1 || redaction.templatePage() > regions.templatePageCount()
-                    || region == null || region.x() < 0 || region.y() < 0 || region.width() <= 0
-                    || region.height() <= 0 || region.x() + region.width() > 1.0
-                    || region.y() + region.height() > 1.0) {
-                throw new MaskException("INVALID_REDACTION", "redaction region out of bounds");
             }
         }
     }

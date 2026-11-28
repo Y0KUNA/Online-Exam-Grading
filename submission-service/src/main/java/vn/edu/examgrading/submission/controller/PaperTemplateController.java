@@ -49,24 +49,26 @@ public class PaperTemplateController {
     public Map<String, Object> create(@RequestPart("metadata") String metadata, @RequestPart("file") MultipartFile file) throws Exception {
         if (file.isEmpty() || file.getSize() > MAX_TEMPLATE_BYTES || !"application/pdf".equalsIgnoreCase(file.getContentType()))
             throw new IllegalArgumentException("Tệp mẫu phải là PDF và không vượt quá 20 MB.");
-        Map<String, Object> data = json.readValue(metadata, new TypeReference<>() {});
+        Map<String, Object> data;
+        try { data = json.readValue(metadata, new TypeReference<>() {}); }
+        catch (Exception exception) { throw new IllegalArgumentException("Thông tin mẫu giấy thi không phải JSON hợp lệ."); }
         String name = string(data, "name");
-        List<Map<String, Object>> masks = json.convertValue(data.get("masks"), new TypeReference<>() {});
-        if (masks == null || masks.isEmpty()) throw new IllegalArgumentException("Cần đánh dấu ít nhất một vùng che.");
+        // A selected region is now removed from the page instead of being painted
+        // white or overwritten with a pseudonym. Accept `masks` as a migration
+        // alias for templates created by older versions of the editor.
+        List<Map<String, Object>> cuts = json.convertValue(data.containsKey("cuts") ? data.get("cuts") : data.get("masks"), new TypeReference<>() {});
+        if (cuts == null || cuts.isEmpty()) throw new IllegalArgumentException("Cần đánh dấu ít nhất một vùng cắt bỏ.");
         byte[] sourcePdf = file.getBytes();
         PageInfo pageInfo = readPageInfo(sourcePdf);
-        for (Map<String, Object> mask : masks) validateRegion(mask, pageInfo.pageCount(), "vùng che");
+        for (int index = 0; index < cuts.size(); index++) validateRegion(cuts.get(index), pageInfo.pageCount(), "vùng cắt bỏ " + (index + 1));
         List<Map<String, Object>> crops = json.convertValue(data.get("crops"), new TypeReference<>() {});
         if (crops == null || crops.isEmpty()) throw new IllegalArgumentException("Cần đánh dấu ít nhất một vùng cắt trang.");
-        for (Map<String, Object> crop : crops) validateCrop(crop, pageInfo.pageCount());
+        for (int index = 0; index < crops.size(); index++) validateCrop(crops.get(index), pageInfo.pageCount(), "vùng trang " + (index + 1));
         if (crops.stream().map(crop -> integer(crop, "order")).distinct().count() != crops.size()) {
             throw new IllegalArgumentException("Thứ tự các trang cắt không được trùng nhau.");
         }
-        validateCutRegions(masks, crops);
-        List<Map<String, Object>> redactions = json.convertValue(data.get("redactions"), new TypeReference<>() {});
-        if (redactions == null) redactions = List.of();
-        for (Map<String, Object> redaction : redactions) validateRegion(redaction, pageInfo.pageCount(), "vùng che thường");
-        Map<String, Object> normalizedMask = normalizedMask(masks, crops, redactions, pageInfo.pageCount());
+        validateCutRegions(cuts, crops);
+        Map<String, Object> normalizedMask = normalizedMask(cuts, crops, pageInfo.pageCount());
         UUID id = UUID.randomUUID();
         jdbc.update("insert into paper_template(template_id,name,description,page_width,page_height,mask,source_pdf,source_file_name,active) values(?,?,?,?,?,cast(? as jsonb),?,?,true)",
                 id, name, optional(data, "description"), pageInfo.width(), pageInfo.height(), json.writeValueAsString(normalizedMask), sourcePdf, file.getOriginalFilename());
@@ -80,30 +82,35 @@ public class PaperTemplateController {
         if (updated == 0) throw new IllegalArgumentException("Mẫu không tồn tại hoặc đã được dùng cho bài thi nên không thể xóa.");
     }
 
-    private static void validateRegion(Map<String, Object> mask, int pageCount, String label) {
-        int page = integer(mask, "page");
-        if (page < 1 || page > pageCount) throw new IllegalArgumentException("Trang của " + label + " không hợp lệ.");
-        for (String key : List.of("x", "y", "width", "height")) {
-            BigDecimal value = number(mask, key);
-            if (value.signum() < 0 || value.compareTo(BigDecimal.ONE) > 0) throw new IllegalArgumentException("Tọa độ vùng che không hợp lệ.");
+    private static void validateRegion(Map<String, Object> region, int pageCount, String label) {
+        try {
+            int page = integer(region, "page");
+            if (page < 1 || page > pageCount) throw new IllegalArgumentException("chọn trang " + page + ", nhưng PDF chỉ có " + pageCount + " trang.");
+            for (String key : List.of("x", "y", "width", "height")) {
+                BigDecimal value = number(region, key);
+                if (value.signum() < 0 || value.compareTo(BigDecimal.ONE) > 0) throw new IllegalArgumentException("tọa độ " + key + " phải nằm trong khoảng 0 đến 1.");
+            }
+            if (number(region, "width").signum() <= 0 || number(region, "height").signum() <= 0) throw new IllegalArgumentException("chiều rộng và chiều cao phải lớn hơn 0.");
+            if (number(region, "x").add(number(region, "width")).compareTo(BigDecimal.ONE) > 0 || number(region, "y").add(number(region, "height")).compareTo(BigDecimal.ONE) > 0) throw new IllegalArgumentException("vượt ra ngoài mép trang PDF.");
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(capitalize(label) + ": " + exception.getMessage());
         }
-        if (number(mask, "width").signum() <= 0 || number(mask, "height").signum() <= 0
-                || number(mask, "x").add(number(mask, "width")).compareTo(BigDecimal.ONE) > 0 || number(mask, "y").add(number(mask, "height")).compareTo(BigDecimal.ONE) > 0)
-            throw new IllegalArgumentException("Vùng che vượt quá trang PDF.");
     }
 
-    private static void validateCrop(Map<String, Object> crop, int pageCount) {
-        validateRegion(crop, pageCount, "vùng cắt");
-        if (integer(crop, "order") < 1) throw new IllegalArgumentException("Thứ tự trang cắt không hợp lệ.");
+    private static void validateCrop(Map<String, Object> crop, int pageCount, String label) {
+        validateRegion(crop, pageCount, label);
+        if (integer(crop, "order") < 1) throw new IllegalArgumentException(capitalize(label) + ": thứ tự trang xuất phải từ 1 trở lên.");
     }
 
     private static void validateCutRegions(List<Map<String, Object>> cuts, List<Map<String, Object>> crops) {
         final BigDecimal tolerance = new BigDecimal("0.01");
-        for (Map<String, Object> cut : cuts) {
+        for (int index = 0; index < cuts.size(); index++) {
+            Map<String, Object> cut = cuts.get(index);
+            String label = "Vùng cắt bỏ " + (index + 1);
             BigDecimal y = number(cut, "y");
             BigDecimal bottom = y.add(number(cut, "height"));
             if (y.compareTo(tolerance) > 0 || bottom.compareTo(BigDecimal.ONE.subtract(tolerance)) < 0) {
-                throw new IllegalArgumentException("Vùng cắt phách phải kéo dài từ mép trên đến mép dưới trang PDF.");
+                throw new IllegalArgumentException(label + " phải kéo dài từ mép trên đến mép dưới trang PDF.");
             }
             int page = integer(cut, "page");
             BigDecimal left = number(cut, "x");
@@ -118,62 +125,31 @@ public class PaperTemplateController {
                 return overlapsCrop && (touchesLeft || touchesRight);
             });
             if (!touchesCropEdge) {
-                throw new IllegalArgumentException("Vùng cắt phách phải chạm mép của một vùng trang đã tách.");
+                throw new IllegalArgumentException(label + " phải chạm mép trái hoặc phải của vùng trang đã tách.");
             }
         }
     }
 
-    /**
-     * PageMasker currently rasterizes one rectangle and writes the generated
-     * pseudonym inside it.  The editor may collect several rectangles, so keep
-     * the user's count for display but persist their bounding rectangle.  This
-     * is intentionally conservative: no selected personal information can be
-     * left visible between rectangles.
-     */
-    private static Map<String, Object> normalizedMask(List<Map<String, Object>> masks, List<Map<String, Object>> crops,
-                                                        List<Map<String, Object>> redactions, int templatePageCount) {
-        int maskPage = integer(masks.get(0), "page");
-        if (masks.stream().anyMatch(mask -> integer(mask, "page") != maskPage)) {
-            throw new IllegalArgumentException("Các vùng che phải nằm trên cùng một mặt mẫu.");
-        }
-        BigDecimal minX = BigDecimal.ONE, minY = BigDecimal.ONE, maxX = BigDecimal.ZERO, maxY = BigDecimal.ZERO;
-        for (Map<String, Object> region : masks) {
-            BigDecimal x = number(region, "x"), y = number(region, "y");
-            minX = minX.min(x); minY = minY.min(y);
-            maxX = maxX.max(x.add(number(region, "width"))); maxY = maxY.max(y.add(number(region, "height")));
-        }
-        BigDecimal width = maxX.subtract(minX), height = maxY.subtract(minY);
-        Map<String, Object> mask = region(minX, minY, width, height);
-        // A centered inner area is reserved for the generated phách.
-        Map<String, Object> print = region(
-                minX.add(width.multiply(new BigDecimal("0.10"))),
-                minY.add(height.multiply(new BigDecimal("0.25"))),
-                width.multiply(new BigDecimal("0.80")), height.multiply(new BigDecimal("0.50")));
-        print.put("fontName", "Helvetica-Bold");
-        print.put("fontSize", 12);
-        print.put("align", "CENTER");
+    /** Persists every selected edge strip; the worker removes these strips. */
+    private static Map<String, Object> normalizedMask(List<Map<String, Object>> cuts, List<Map<String, Object>> crops,
+                                                        int templatePageCount) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("mask", mask); result.put("print", print); result.put("maskPage", maskPage);
-        result.put("maskCount", masks.size()); result.put("templatePageCount", templatePageCount);
-        result.put("crops", crops); result.put("cuts", masks); result.put("redactions", redactions);
+        result.put("maskCount", cuts.size()); result.put("templatePageCount", templatePageCount);
+        result.put("crops", crops); result.put("cuts", cuts); result.put("redactions", List.of());
         return result;
     }
-
-    private static Map<String, Object> region(BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("x", x); result.put("y", y); result.put("width", width); result.put("height", height);
-        return result;
-    }
-    private static PageInfo readPageInfo(byte[] sourcePdf) throws Exception {
+    private static PageInfo readPageInfo(byte[] sourcePdf) {
         try (PDDocument pdf = PDDocument.load(new ByteArrayInputStream(sourcePdf))) {
             if (pdf.getNumberOfPages() == 0) throw new IllegalArgumentException("PDF mẫu không có trang nào.");
             var box = pdf.getPage(0).getMediaBox();
             return new PageInfo(box.getWidth(), box.getHeight(), pdf.getNumberOfPages());
-        }
+        } catch (IllegalArgumentException exception) { throw exception;
+        } catch (Exception exception) { throw new IllegalArgumentException("Không thể đọc tệp PDF mẫu. Hãy kiểm tra tệp không bị hỏng hoặc có mật khẩu."); }
     }
     private static String string(Map<String, Object> data, String key) { String value = optional(data, key); if (value == null) throw new IllegalArgumentException(key + " là bắt buộc."); return value; }
     private static String optional(Map<String, Object> data, String key) { Object value = data.get(key); return value == null || value.toString().isBlank() ? null : value.toString().trim(); }
     private static BigDecimal number(Map<String, Object> data, String key) { try { return new BigDecimal(String.valueOf(data.get(key))); } catch (RuntimeException e) { throw new IllegalArgumentException(key + " không hợp lệ."); } }
     private static int integer(Map<String, Object> data, String key) { try { return Integer.parseInt(String.valueOf(data.get(key))); } catch (RuntimeException e) { throw new IllegalArgumentException(key + " không hợp lệ."); } }
+    private static String capitalize(String value) { return Character.toUpperCase(value.charAt(0)) + value.substring(1); }
     private record PageInfo(double width, double height, int pageCount) {}
 }

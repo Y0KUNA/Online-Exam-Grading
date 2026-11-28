@@ -1,0 +1,104 @@
+@startuml SubmissionUploadMainFlow
+title Submission Service — Main Upload Flow: UML Class Relationships
+left to right direction
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+hide empty methods
+hide empty fields
+
+' Scope: classes related to the happy-path upload flow only.
+' DTOs, enums, messages, errors, retries, SSE and cleanup are omitted.
+
+package "Submission Service" {
+  class SubmissionController <<controller>> {
+  }
+
+  class SubmissionService <<service>> {
+  }
+
+  interface SubmissionRepository <<repository>> {
+  }
+
+  interface PaperTemplateRepository <<repository>> {
+  }
+
+  interface ExamFileRepository <<repository>> {
+  }
+
+  interface ProcessingJobRepository <<repository>> {
+  }
+
+  class IdentityClient <<client>> {
+  }
+
+  interface ObjectStorageGateway <<client>> {
+  }
+
+  class ValidationWorker <<worker>> {
+  }
+
+  class AnonymizationWorker <<worker>> {
+  }
+
+  class Submission <<entity>> {
+  }
+
+  class PaperTemplate <<entity>> {
+  }
+
+  class ExamFile <<entity>> {
+  }
+
+  class ProcessingJob <<entity>> {
+  }
+}
+
+' Solid navigable associations: a class holds a collaborator reference.
+SubmissionController --> SubmissionService
+SubmissionService --> SubmissionRepository
+SubmissionService --> PaperTemplateRepository
+SubmissionService --> ExamFileRepository
+SubmissionService --> ProcessingJobRepository
+SubmissionService --> IdentityClient
+SubmissionService --> ObjectStorageGateway
+
+ValidationWorker --> SubmissionRepository
+ValidationWorker --> ProcessingJobRepository
+ValidationWorker --> PaperTemplateRepository
+ValidationWorker --> ExamFileRepository
+ValidationWorker --> IdentityClient
+ValidationWorker --> ObjectStorageGateway
+
+AnonymizationWorker --> SubmissionRepository
+AnonymizationWorker --> ProcessingJobRepository
+AnonymizationWorker --> PaperTemplateRepository
+AnonymizationWorker --> ExamFileRepository
+AnonymizationWorker --> ObjectStorageGateway
+
+' Dashed dependencies: a repository persists an entity, or a class creates it.
+SubmissionRepository ..> Submission : persists
+PaperTemplateRepository ..> PaperTemplate : persists
+ExamFileRepository ..> ExamFile : persists
+ProcessingJobRepository ..> ProcessingJob : persists
+SubmissionService ..> Submission : creates / updates
+SubmissionService ..> ExamFile : creates ORIGINAL
+SubmissionService ..> ProcessingJob : creates VALIDATE
+ValidationWorker ..> ProcessingJob : creates ANONYMIZE
+ValidationWorker ..> ExamFile : updates checksum
+AnonymizationWorker ..> ExamFile : creates ANONYMIZED
+
+' Entity object relations and lifecycle ownership.
+Submission "0..*" --> "1" PaperTemplate : template
+Submission "1" *-- "1..*" ExamFile : owns >
+Submission "1" *-- "0..*" ProcessingJob : schedules >
+
+note top of SubmissionService
+  Solid line: navigable association.
+  Dashed arrow: dependency.
+  Filled diamond: composition.
+end note
+
+note bottom of IdentityClient
+  No external-service entity is duplicated.
+end note
+@enduml

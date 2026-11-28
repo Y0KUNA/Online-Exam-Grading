@@ -9,3 +9,13 @@ spring:
   flyway.enabled: true
 management.endpoints.web.exposure.include: health,info
 app.internal.hmac-secret: ${IDENTITY_HMAC_SECRET:replace-with-a-32-byte-minimum-secret}
+app:
+  rubric-storage:
+    endpoint: ${S3_INTERNAL_ENDPOINT:http://localhost:9000}
+    region: ${S3_REGION:us-east-1}
+    access-key: ${S3_ACCESS_KEY:minioadmin}
+    secret-key: ${S3_SECRET_KEY:change-me}
+    bucket: ${S3_RUBRIC_BUCKET:rubrics}
+    gateway-base: ${S3_PUBLIC_BASE:http://localhost:8080/storage}
+    max-pdf-bytes: ${MAX_RUBRIC_PDF_BYTES:52428800}
+    upload-ttl-minutes: ${RUBRIC_UPLOAD_TTL_MINUTES:10}

@@ -37,7 +37,7 @@ spring:
           predicates: [ 'Path=/api/v1/reviews/**' ]
         - id: storage
           uri: ${S3_INTERNAL_ENDPOINT:http://localhost:9000}
-          predicates: [ 'Path=/storage/original,/storage/original/**,/storage/anonymized,/storage/anonymized/**' ]
+          predicates: [ 'Path=/storage/original,/storage/original/**,/storage/anonymized,/storage/anonymized/**,/storage/rubrics,/storage/rubrics/**' ]
           filters: [ StripPrefix=1 ]
 management.endpoints.web.exposure.include: health,info
 management.endpoint.health.probes.enabled: true

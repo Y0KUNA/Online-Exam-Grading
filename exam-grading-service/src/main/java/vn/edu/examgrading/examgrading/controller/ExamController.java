@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.server.ResponseStatusException;
 import vn.edu.examgrading.examgrading.dto.CreateExamRequest;
 import vn.edu.examgrading.examgrading.service.ExamService;
 
@@ -39,9 +40,36 @@ public class ExamController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> addQuestion(@PathVariable UUID examId, @RequestBody Map<String, Object> body) { return exams.addQuestion(examId, body); }
 
+    @PutMapping("/{examId}/questions/tree")
+    public List<Map<String, Object>> replaceQuestionTree(@PathVariable UUID examId, @RequestBody Map<String, Object> body) {
+        try {
+            return exams.replaceQuestionTree(examId, body);
+        } catch (IllegalStateException exception) {
+            if ("QUESTION_TREE_LOCKED_AFTER_ASSIGNMENT".equals(exception.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Không thể đổi cấu trúc câu hỏi vì kỳ thi đã có bài được phân công chấm.");
+            }
+            throw exception;
+        }
+    }
+
     @PostMapping("/{examId}/rubrics")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> rubric(@PathVariable UUID examId, @RequestBody Map<String, Object> body) { return exams.createRubric(examId, body); }
+
+    @GetMapping("/{examId}/rubrics") public List<Map<String, Object>> rubrics(@PathVariable UUID examId) { return exams.rubrics(examId); }
+
+    @GetMapping("/{examId}/rubrics/{rubricId}/file")
+    public Map<String, Object> rubricPdf(@PathVariable UUID examId, @PathVariable UUID rubricId) {
+        return exams.rubricPdf(examId, rubricId);
+    }
+
+    @PostMapping("/{examId}/rubrics/upload")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Map<String, Object> initiateRubricUpload(@PathVariable UUID examId, @RequestBody Map<String, Object> body) { return exams.initiateRubricUpload(examId, body); }
+
+    @PostMapping("/{examId}/rubrics/{rubricId}/complete")
+    public Map<String, Object> completeRubricUpload(@PathVariable UUID examId, @PathVariable UUID rubricId) { return exams.completeRubricUpload(examId, rubricId); }
 
     @PostMapping("/{examId}/rubrics/{rubricId}/activate")
     public Map<String, Object> activateRubric(@PathVariable UUID examId, @PathVariable UUID rubricId, @RequestBody Map<String, Object> body) { return exams.activateRubric(examId, rubricId, body); }
